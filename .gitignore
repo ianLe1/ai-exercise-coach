@@ -20,3 +20,6 @@ scratch/
 # 本机沙箱可写 Gradle/Android 目录（不入库）
 tools/modlens-bridge/node_modules/
 .kotlin/
+
+# IDE 本机配置（Android Studio 自动生成，不入库）
+.idea/

@@ -1,5 +1,10 @@
 # AI 习题教练（AI Exercise Coach）
 
+[![Release](https://img.shields.io/github/v/release/ianLe1/ai-exercise-coach)](https://github.com/ianLe1/ai-exercise-coach/releases/latest)
+[![Stars](https://img.shields.io/github/stars/ianLe1/ai-exercise-coach)](https://github.com/ianLe1/ai-exercise-coach)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.2.10-7F52FF)](https://kotlinlang.org)
+[![Compose](https://img.shields.io/badge/Compose-Material%203-4285F4)](https://developer.android.com/jetpack/compose)
+
 一个 Android 端「AI 习题工具」：**扫描习题 → 生成/维护“不会的知识点”与遗忘曲线计时器 → 批改 → 汇总相关知识点 → 按遗忘曲线生成结构化练习卷（JSON + Markdown 题面）**。
 
 - 技术栈：Kotlin + Jetpack Compose（Material 3）+ kotlinx.serialization + Coroutines；AI 默认离线规则引擎，可一键切换 OpenAI 兼容接口。
