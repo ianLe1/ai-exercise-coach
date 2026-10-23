@@ -1,0 +1,22 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.gradle-home/
+.android-home/
+scratch/
+
+# 本机沙箱可写 Gradle/Android 目录（不入库）
+tools/modlens-bridge/node_modules/
+.kotlin/
