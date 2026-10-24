@@ -119,7 +119,12 @@ data class PaperRequest(
     val aspect: String,
     val count: Int,
     val asker: AskerProfile,
+    /** 紧迫的「不会的知识点」（主打）。 */
     val knowledgePoints: List<KnowledgePoint> = emptyList(),
+    /** 已掌握/较熟的知识点（穿插巩固，保证整卷完整）。 */
+    val reviewPoints: List<KnowledgePoint> = emptyList(),
+    /** 需要 AI 补充的新知识点题量（同年级常考、尚未收入列表）。 */
+    val newPointCount: Int = 0,
 )
 
 /* ------------------------------------------------------------------ */

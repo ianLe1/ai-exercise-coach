@@ -99,6 +99,25 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (aspects.isNotEmpty()) {
+                    Text("标签（点一下按这个方面出整卷）", style = MaterialTheme.typography.labelSmall)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item {
+                            AssistChip(
+                                onClick = { viewModel.generatePaperWithAspect("") },
+                                label = { Text("全部") },
+                            )
+                        }
+                        val tagAspects = aspects.take(12)
+                        items(tagAspects.size) { index ->
+                            val aspect = tagAspects[index]
+                            AssistChip(
+                                onClick = { viewModel.generatePaperWithAspect(aspect) },
+                                label = { Text(aspect) },
+                            )
+                        }
+                    }
+                }
                 Button(
                     onClick = { viewModel.generatePaper() },
                     enabled = !state.busy,

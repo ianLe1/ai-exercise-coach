@@ -406,6 +406,9 @@ class OpenAiCompatibleAiService(
     private fun buildPaperPrompt(request: PaperRequest): String {
         val asker = request.asker
         val now = System.currentTimeMillis()
+        val review = request.reviewPoints.joinToString("\n") { point ->
+            "- title=${point.title}；aspect=${point.aspect}；掌握度=${"%.2f".format(point.mastery)}（已掌握，用来穿插巩固）"
+        }
         val points = request.knowledgePoints.joinToString("\n") { point ->
             "- id=${point.id}；title=${point.title}；aspect=${point.aspect}；" +
                 "掌握度=${"%.2f".format(point.mastery)}；复习紧迫度=${"%.2f".format(ForgettingCurve.urgency(point.timer, point.mastery, now))}；" +
@@ -419,8 +422,16 @@ class OpenAiCompatibleAiService(
             appendLine("【练习卷方面】${request.aspect}")
             appendLine("【题量】${request.count} 题，按正规试卷分大题：一、选择题（${(request.count * 8 + 19) / 20} 题，每题 4 分）；二、填空题（${(request.count * 6 + 19) / 20} 题，每题 4 分）；三、解答题（其余题，每题 8~12 分）")
             appendLine()
-            appendLine("【必须优先考察的知识点（已按遗忘曲线紧迫度排序）】")
+            appendLine("【必考：不会的知识点（已按遗忘曲线紧迫度排序，约占 60%）】")
             appendLine(points)
+            if (review.isNotBlank()) {
+                appendLine()
+                appendLine("【穿插：已经掌握的知识点（约占 20%，用于巩固、保证整卷完整）】")
+                appendLine(review)
+            }
+            appendLine()
+            appendLine("【新知识点（约占 ${request.newPointCount} 题）】")
+            appendLine("补充同年级常考、但上面列表里没有的新知识点题目（不要与上面知识点重复）；这些题的 knowledgePointId 留空，knowledgePointTitle 写新知识点名称。")
             appendLine()
             appendLine("要求：")
             appendLine("1. 只输出 JSON，不要输出 JSON 之外的任何文字；")
@@ -430,6 +441,7 @@ class OpenAiCompatibleAiService(
             appendLine("3.1 answerSheet 是“答题卡结构”，只描述答题区，不含题干：数字=答题区行数，数组=选择题选项，字符串=填空题模板（用 ___ 表示填空位置）；必须有大题与题，小题可有可无；")
             appendLine("4. 题目要覆盖上面的知识点，优先考察最紧迫的；难度混合 easy/medium/hard；")
             appendLine("4.1 这是一整张试卷：questionMarkdown 里要带试卷标题、考试时间/总分说明，并在每道题前标出「一、选择题」「二、填空题」「三、解答题」分节与小问；")
+            appendLine("4.3 整卷必须完整：约 60% 题覆盖「不会的知识点」、约 20% 题用「已掌握的知识点」巩固、其余为「新知识点」；不要全部考错题；")
             appendLine("4.2 选择题必须 4 个选项 A/B/C/D；填空题用 ___ 标空；解答题要有完整设问与求解过程分步；")
             appendLine("5. JSON 结构：")
             appendLine(

@@ -219,8 +219,23 @@ class LocalAiService : AiService {
             return Outcome.Failure(AppError.GenerationInvalid("没有可考察的知识点"))
         }
         val questions = ArrayList<PaperQuestion>(request.count)
+        val basePoint = request.knowledgePoints.first()
+        val newCount = request.newPointCount.coerceIn(0, request.count / 3)
+        val newStart = request.count - newCount
         repeat(request.count) { index ->
-            val point = request.knowledgePoints[index % request.knowledgePoints.size]
+            val point = if (index >= newStart) {
+                // 新知识点：同年级常考但不在「不会的知识点」列表里，用来保证整卷完整
+                basePoint.copy(
+                    id = "new-${index + 1}",
+                    title = "新知识点（${request.aspect}常考）",
+                    mastery = 0.0,
+                )
+            } else if (request.reviewPoints.isNotEmpty() && index % 5 == 3) {
+                // 会的知识点：穿插巩固
+                request.reviewPoints[index % request.reviewPoints.size]
+            } else {
+                request.knowledgePoints[index % request.knowledgePoints.size]
+            }
             val difficulty = DIFFICULTIES[index % DIFFICULTIES.size]
             val id = "L-${index + 1}"
             val section = when {
@@ -244,7 +259,8 @@ class LocalAiService : AiService {
         val payload = PaperPayload(
             title = "「${request.aspect}」综合复习试卷（离线模板 · 100 分 / 90 分钟）",
             aspect = request.aspect,
-            summary = "依据遗忘曲线紧迫度挑选 ${request.knowledgePoints.size} 个知识点：$titles。" +
+            summary = "主考 ${request.knowledgePoints.size} 个不会的知识点：$titles；" +
+                "另穿插 ${request.reviewPoints.size} 个相对熟练的知识点巩固，并补充 $newCount 道新知识点题，保证整卷完整。" +
                 "本卷由离线规则引擎模板生成；在「设置」中配置云端 AI 后可生成学科化题目。",
             questions = questions,
             // 答题卡结构：数字=答题行数、数组=选择题选项、字符串=填空（下划线）

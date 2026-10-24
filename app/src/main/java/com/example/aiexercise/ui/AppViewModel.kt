@@ -1096,6 +1096,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         generatePaper("")
     }
 
+    /** 点出卷标签：按该方面直接生成整卷。 */
+    fun generatePaperWithAspect(aspect: String) {
+        _ui.update { it.copy(paperAspect = aspect, paperCount = 20, dueOnly = false) }
+        generatePaper(aspect)
+    }
+
     fun generatePaper(aspect: String = _ui.value.paperAspect) {
         val current = _ui.value
         if (current.busy) return

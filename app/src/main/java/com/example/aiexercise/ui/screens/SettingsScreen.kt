@@ -1,6 +1,7 @@
 package com.example.aiexercise.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,7 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
@@ -29,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.aiexercise.ai.AiMode
+import com.example.aiexercise.ai.LlmPresets
 import com.example.aiexercise.ui.AppScreen
 import com.example.aiexercise.ui.AppViewModel
 import com.example.aiexercise.ui.UiState
@@ -83,6 +87,23 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                     selected = mode == AiMode.REMOTE,
                     onSelect = { mode = AiMode.REMOTE },
                 )
+                Text(
+                    "快速预设（来自 Free-LLM-Collection，需自备 Key）",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(LlmPresets.all.size) { index ->
+                        val preset = LlmPresets.all[index]
+                        AssistChip(
+                            onClick = {
+                                baseUrl = preset.baseUrl
+                                model = preset.model
+                                mode = AiMode.REMOTE
+                            },
+                            label = { Text(preset.name) },
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = baseUrl,
                     onValueChange = { baseUrl = it },

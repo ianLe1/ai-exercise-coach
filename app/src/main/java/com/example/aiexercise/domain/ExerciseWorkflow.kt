@@ -490,17 +490,27 @@ class ExerciseToolkit(
                 AppError.NoKnowledgePointForAspect("$requestedAspect（当前没有到期知识点）", availableAspects(data)),
             )
         }
-        val selected = candidates
-            .sortedByDescending {
-                ForgettingCurve.urgency(it.timer, it.mastery, now, config.forgetting)
-            }
-            .take(maxOf(1, minOf(count, config.maxKnowledgePointsPerPaper)))
+        val ranked = candidates.sortedByDescending {
+            ForgettingCurve.urgency(it.timer, it.mastery, now, config.forgetting)
+        }
+        // 紧迫知识点只取一部分（整卷还要穿插已会的与新知识点，不能全考错题）
+        val selected = ranked.take(maxOf(1, minOf(3, config.maxKnowledgePointsPerPaper)))
+        // 会的知识点（掌握度高）穿插进卷，避免整卷全是错题，保持完整性
+        // 相对熟练的知识点（掌握度最高、且不在紧迫选中里）——不要求真的 >=0.7，避免新用户整卷只有错题
+        val selectedIds = selected.map { point -> point.id }.toSet()
+        val reviewSelected = matched
+            .filter { it.id !in selectedIds }
+            .sortedByDescending { it.mastery }
+            .take(maxOf(1, minOf(3, count / 4)))
         val questionCount = count.coerceIn(1, config.maxQuestionsPerPaper)
+        val newPointCount = maxOf(1, (questionCount * 0.2).toInt())
         val request = PaperRequest(
             aspect = requestedAspect.ifBlank { "全部" },
             count = questionCount,
             asker = data.asker,
             knowledgePoints = selected,
+            reviewPoints = reviewSelected,
+            newPointCount = newPointCount,
         )
         val payload = when (val result = ai.generatePaper(request)) {
             is Outcome.Success -> result.value
