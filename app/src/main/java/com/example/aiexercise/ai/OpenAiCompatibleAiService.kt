@@ -152,17 +152,29 @@ class OpenAiCompatibleAiService(
         val configurationError = validateConfiguration()
         if (configurationError != null) return Outcome.Failure(configurationError)
         val url = chatCompletionsUrl(config.baseUrl)
-        val body = AiJson.json.encodeToString(
-            ChatRequestBody.serializer(),
-            ChatRequestBody(
-                model = config.model,
-                temperature = config.temperature,
-                messages = listOf(
-                    ChatMessage(role = "system", content = systemPrompt),
-                    ChatMessage(role = "user", content = userPrompt),
-                ),
-            ),
+        val messages = listOf(
+            ChatMessage(role = "system", content = systemPrompt),
+            ChatMessage(role = "user", content = userPrompt),
         )
+        val body = if (usesInternEndpoint()) {
+            AiJson.json.encodeToString(
+                InternChatRequestBody.serializer(),
+                InternChatRequestBody(
+                    model = config.model,
+                    temperature = config.temperature,
+                    messages = messages,
+                ),
+            )
+        } else {
+            AiJson.json.encodeToString(
+                ChatRequestBody.serializer(),
+                ChatRequestBody(
+                    model = config.model,
+                    temperature = config.temperature,
+                    messages = messages,
+                ),
+            )
+        }
         val headers = buildMap {
             put("Content-Type", "application/json")
             if (config.apiKey.isNotBlank()) put("Authorization", "Bearer ${config.apiKey}")
@@ -218,7 +230,8 @@ class OpenAiCompatibleAiService(
         val response = runCatching {
             AiJson.json.decodeFromString(ChatResponseBody.serializer(), body)
         }.getOrNull() ?: return null
-        return response.choices.firstOrNull()?.message?.content
+        val message = response.choices.firstOrNull()?.message
+        return message?.content?.takeIf { it.isNotBlank() } ?: message?.reasoning_content?.takeIf { it.isNotBlank() }
     }
 
     private fun extractErrorMessage(body: String): String {
@@ -484,7 +497,28 @@ class OpenAiCompatibleAiService(
         if (text.length <= max) text else text.take(max) + "…（内容过长已截断）"
 
     @Serializable
-    private data class ChatMessage(val role: String, val content: String)
+    private data class ChatMessage(
+        val role: String,
+        val content: String,
+        /** 部分推理模型（如 intern-s2）只把内容放在 reasoning_content，content 为 null。 */
+        val reasoning_content: String? = null,
+    )
+
+    /** intern-ai 的发现端点：支持关闭“思考”，直接产出最终 JSON。 */
+    private fun usesInternEndpoint(): Boolean = config.baseUrl.contains("intern-ai.org.cn")
+
+    @Serializable
+    private data class ChatTemplateKwargs(val enable_thinking: Boolean = false)
+
+    @Serializable
+    private data class InternChatRequestBody(
+        val model: String,
+        val temperature: Double,
+        val messages: List<ChatMessage>,
+        val stream: Boolean = false,
+        val max_tokens: Int = 4096,
+        val chat_template_kwargs: ChatTemplateKwargs = ChatTemplateKwargs(),
+    )
 
     @Serializable
     private data class ChatRequestBody(
@@ -492,6 +526,8 @@ class OpenAiCompatibleAiService(
         val temperature: Double,
         val messages: List<ChatMessage>,
         val stream: Boolean = false,
+        /** 推理型模型（intern-s2 等）会先消耗思考 token，留足余量才能拿到最终 JSON。 */
+        val max_tokens: Int = 4096,
     )
 
     @Serializable

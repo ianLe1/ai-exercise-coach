@@ -1177,13 +1177,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
             val request = AnalyzeRequest(
-                questionText = "测试题：已知 1+1=2，求 2+2 的值。",
-                referenceAnswer = "4",
-                studentAnswer = "4",
+                questionText = "测试题：求二次函数 f(x)=x²-4x+3 在区间 [0,3] 上的最值。",
+                referenceAnswer = "最小值为 -1（x=2 处），最大值为 3（x=0 处）",
+                studentAnswer = "只代入了顶点，没有比较端点。",
                 asker = _ui.value.data.asker,
             )
             when (val result = container.aiService.analyze(request)) {
                 is Outcome.Success -> _ui.update {
+                    android.util.Log.d("AiTest", "ok kps=${result.value.knowledgePoints.size}")
                     it.copy(
                         busy = false,
                         message = UiMessage(
@@ -1194,6 +1195,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 is Outcome.Failure -> _ui.update {
+
                     it.copy(busy = false, message = UiMessage("AI 测试失败：${result.error.userMessage}", true))
                 }
             }

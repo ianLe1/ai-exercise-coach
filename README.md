@@ -12,7 +12,8 @@
 - 多页扫描：ML Kit 文档扫描器一次拍多页（自动透视矫正 + 增强），或相册多选后本地按 EXIF 摆正并提升对比度；OCR 后把题目**一道一道切出来**，跨页题自动合并，**每道题独立成为一条习题**（各自维护不会的知识点与遗忘曲线计时器）。
 - **整卷一键生成，批改统一走扫描**：不用进设置，首页「生成一整张试卷」直接按遗忘曲线出 100 分 / 90 分钟正规试卷（选择 / 填空 / 解答三大题）；作答后回首页「扫描习题」批改，不再有单独的练习卷批改入口。
 - **整卷不再只考错题**：出卷时主考约 3 个「不会的知识点」（约 60%），穿插 2 个相对熟练的知识点巩固（约 20%），再由 AI 补充约 20% 新知识点题；离线模板也会补这类题，保证整卷完整。
-- **大模型预设**：设置页内置来自 [Free-LLM-Collection](https://github.com/for-the-zero/Free-LLM-Collection) 的 OpenAI 兼容预设（硅基流动 / OpenRouter / FreeAIapikey / OpenAI / DeepSeek），点一下自动填好 Base URL 与模型名并切到云端模式；**Key 仍要自己到对应服务官网申请**（预设不包含任何人的 Key）。没填 Key 时「保存并测试」会明确提示，扫描也自动用离线 ML Kit，不会反复报「没有 API Key」。
+- **大模型预设**：设置页内置 Intern AI（`https://discovery-api.intern-ai.org.cn/v1`，默认模型 `intern-s2`）一个预设，点一下自动填好 Base URL 与模型名并切到云端模式；**Key 由用户自己填**（公开仓库不写任何 Key）。没填 Key 时「保存并测试」会明确提示，扫描自动用离线 ML Kit。
+- **推理模型适配**：对 intern-ai 端点自动发送 `chat_template_kwargs.enable_thinking=false`（否则 `intern-s2` 只在 `reasoning_content` 里思考、`content` 为空），并兼容只返回 `reasoning_content` 的服务；请求 `max_tokens` 提到 4096，避免思考耗尽预算。
 - **结构化强规范**：`domain/PaperStructure.kt` 强制每道题归属三大题之一、有分值且全卷合计=100、选择题≥2 个选项；AI 给出的结构不合规会被拒绝（远程失败自动用离线模板兜底），题面按大题分组渲染并显示每题分值。
 - **界面只有两件事**：首页 = 按复习时间排序的「不会的知识点」列表 + 一个「扫描习题」按钮；练习卷/批改入口在扫描页底部，设置页只保留「大模型 + 用户信息」两块，不再有底部 Tab。
 - **不手填答案、也没有题目内容输入框**：学生作答写在纸上，参考答案由 AI 读题自动生成（`AiService.solve`）；扫描页只有拍照/相册，题目文本由 OCR + Markdown 排版得到，不允许手改。
@@ -335,6 +336,7 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/43_paper_tags_mixed.png` 试卷页恢复「标签」出卷 + 混合知识点整卷
 - `screenshots/44_llm_presets.png` 设置页大模型预设（Free-LLM-Collection）
 - `screenshots/45_missing_key_hint.png` 未填 Key 时的明确提示（预设只填地址与模型名）
+- `screenshots/47_intern_ok.png` Intern AI 连通性测试通过（返回知识点草稿）
 
 ## 构建速度（Android Studio / 命令行）
 

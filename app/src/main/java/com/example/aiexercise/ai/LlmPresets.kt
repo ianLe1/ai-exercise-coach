@@ -1,10 +1,10 @@
 package com.example.aiexercise.ai
 
 /**
- * 免费/常用 OpenAI 兼容服务预设，来源于
- * https://github.com/for-the-zero/Free-LLM-Collection （只收录 OpenAI 格式端点）。
+ * OpenAI 兼容服务预设：当前只保留 Intern AI（discovery-api）。
  *
- * 这些服务需要各自注册并申请 API Key；这里只预填 Base URL 与推荐模型。
+ * 注意：仓库不包含任何 API Key（公开仓库写入 Key 等于泄露）。
+ * 点预设只会填好 Base URL 与模型名，Key 请在设置里粘贴一次。
  */
 data class LlmPreset(
     val name: String,
@@ -16,29 +16,9 @@ object LlmPresets {
 
     val all: List<LlmPreset> = listOf(
         LlmPreset(
-            name = "硅基流动",
-            baseUrl = "https://api.siliconflow.cn/v1",
-            model = "Qwen/Qwen3-8B",
-        ),
-        LlmPreset(
-            name = "OpenRouter",
-            baseUrl = "https://openrouter.ai/api/v1",
-            model = "openrouter/free",
-        ),
-        LlmPreset(
-            name = "FreeAIapikey",
-            baseUrl = "https://api.freeaiapikey.com/v1",
-            model = "openai/gpt-5.5",
-        ),
-        LlmPreset(
-            name = "OpenAI",
-            baseUrl = "https://api.openai.com/v1",
-            model = "gpt-4o-mini",
-        ),
-        LlmPreset(
-            name = "DeepSeek",
-            baseUrl = "https://api.deepseek.com/v1",
-            model = "deepseek-chat",
+            name = "Intern AI",
+            baseUrl = "https://discovery-api.intern-ai.org.cn/v1",
+            model = "intern-s2",
         ),
     )
 }
