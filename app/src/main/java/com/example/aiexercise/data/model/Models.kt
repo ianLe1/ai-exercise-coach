@@ -32,6 +32,8 @@ enum class ExerciseSource {
 data class Exercise(
     val id: String,
     val questionText: String,
+    /** 视觉识别出的排版 Markdown（含题号/选项/公式），便于回看与喂给 AI。 */
+    val questionMarkdown: String = "",
     val fingerprint: String = "",
     val subject: String = "综合",
     val referenceAnswer: String = "",

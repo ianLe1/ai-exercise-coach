@@ -35,6 +35,8 @@ data class ScanInput(
     val crossPage: Boolean = false,
     /** 同一次多页扫描的批次 id。 */
     val scanPaperId: String = "",
+    /** 视觉识别出的排版 Markdown（题号/选项/公式），可为空。 */
+    val questionMarkdown: String = "",
 )
 
 data class ScanResult(
@@ -149,6 +151,7 @@ class ExerciseToolkit(
             val result = ai.analyze(
                 AnalyzeRequest(
                     questionText = text,
+                    questionMarkdown = input.questionMarkdown,
                     referenceAnswer = referenceAnswer,
                     studentAnswer = studentAnswer,
                     subjectHint = input.subjectHint,
@@ -163,6 +166,7 @@ class ExerciseToolkit(
         val exercise = Exercise(
             id = idGenerator(),
             questionText = text,
+            questionMarkdown = input.questionMarkdown.trim(),
             fingerprint = ExerciseIdentity.fingerprint(text),
             subject = resolveSubject(payload, input, data),
             referenceAnswer = referenceAnswer,

@@ -64,6 +64,16 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         cameraFile?.let { file -> if (success) viewModel.onCameraCaptured(file) }
     }
+    // 无 Google 文档扫描器时：相机拍一页 → 本地增强 → 追加为扫描页（可反复拍）
+    var pageCameraFile by remember { mutableStateOf<File?>(null) }
+    val pageCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        pageCameraFile?.let { file ->
+            if (success) {
+                viewModel.onGalleryPickedMultiple(listOf(android.net.Uri.fromFile(file)))
+                viewModel.notify("已拍照加入扫描页（可继续拍下一页）", false)
+            }
+        }
+    }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let(viewModel::onGalleryPicked)
     }
@@ -92,23 +102,27 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
             subtitle = "拍照 / 相册 / 多页试卷；参考答案由 AI 自动生成，你只需在纸上作答",
             onBack = { viewModel.navigate(AppScreen.Home) },
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Tag("当前 AI：${state.aiLabel}")
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "可在「设置」切换离线/云端引擎",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Tag("视觉：${state.visionLabel}")
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "可切 modlens 视觉桥",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Tag("当前 AI：${state.aiLabel}")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "可在「设置」切换离线/云端引擎",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Tag("视觉：${state.visionLabel}")
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "排版结果以 Markdown 保存",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
         ElevatedCard(Modifier.fillMaxWidth()) {
@@ -171,19 +185,26 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(
                         onClick = {
-                            if (activity == null) {
-                                viewModel.notify("当前环境不支持文档扫描，请用相册多选", true)
-                            } else {
+                            if (state.documentScanAvailable && activity != null) {
                                 viewModel.startDocumentScan(activity) { intentSender ->
                                     documentScanLauncher.launch(
                                         IntentSenderRequest.Builder(intentSender).build(),
                                     )
                                 }
+                            } else {
+                                // 华为等无 Google Play 服务的设备：内置拍照扫描（一页一张，可连拍）+ 本地增强
+                                val (file, uri) = viewModel.createCameraOutput()
+                                pageCameraFile = file
+                                pageCameraLauncher.launch(uri)
+                                viewModel.notify(
+                                    "此设备没有 Google 文档扫描器，已启用内置拍照扫描：拍一页加一页，可连续拍。",
+                                    false,
+                                )
                             }
                         },
                         enabled = !state.segmentsBusy && !state.busy,
                         modifier = Modifier.weight(1f),
-                    ) { Text("文档扫描") }
+                    ) { Text(if (state.documentScanAvailable) "文档扫描" else "拍照扫描") }
                     OutlinedButton(
                         onClick = {
                             galleryMultiLauncher.launch(
@@ -270,6 +291,29 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        ElevatedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionHeader("做完练习了？")
+                Text(
+                    "按遗忘曲线出练习卷 → 在纸上作答 → 扫描答题卡批改；订正后可再扫一次。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(
+                        onClick = { viewModel.navigate(AppScreen.Paper) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("练习卷 / 批改") }
+                    if (state.lastReview != null) {
+                        OutlinedButton(
+                            onClick = viewModel::openLastReview,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("上次批改") }
+                    }
+                }
+            }
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(

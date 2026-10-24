@@ -38,6 +38,7 @@ import com.example.aiexercise.data.model.GuidedSession
 import com.example.aiexercise.data.model.KnowledgePoint
 import com.example.aiexercise.domain.ExerciseToolkit
 import com.example.aiexercise.domain.ResearchAssistant
+import com.example.aiexercise.platform.VisionDocument
 import com.example.aiexercise.domain.ForgettingCurve
 import com.example.aiexercise.domain.Outcome
 import com.example.aiexercise.domain.ScanInput
@@ -65,6 +66,8 @@ data class UiState(
 
     // 扫描表单
     val scanText: String = "",
+    /** 视觉识别的排版 Markdown（不含纯文本兜底）。 */
+    val scanMarkdown: String = "",
     val referenceAnswer: String = "",
     val studentAnswer: String = "",
     val imagePath: String? = null,
@@ -106,7 +109,12 @@ data class UiState(
     // 视觉识别（扫描）设置
     val visionMode: VisionMode = VisionMode.MLKIT,
     val visionLabel: String = "",
+    /** 当前设备是否支持 ML Kit 文档扫描（无 Google 服务的华为等设备为 false）。 */
+    val documentScanAvailable: Boolean = true,
     val settingsModlensUrl: String = "",
+    val settingsCloudVisionEndpoint: String = "",
+    val settingsCloudVisionKey: String = "",
+    val settingsCloudVisionModel: String = "",
     val settingsVisionFallback: Boolean = true,
 
     // 联网搜索设置与结果
@@ -160,7 +168,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             settingsModel = container.aiSettings.model,
             visionMode = container.visionSettings.mode,
             visionLabel = container.visionEngine.displayName,
+            documentScanAvailable = container.documentScanEngine.isAvailable,
             settingsModlensUrl = container.visionSettings.modlensUrl,
+            settingsCloudVisionEndpoint = container.visionSettings.cloudEndpoint,
+            settingsCloudVisionKey = container.visionSettings.cloudApiKey,
+            settingsCloudVisionModel = container.visionSettings.cloudModel,
             settingsVisionFallback = container.visionSettings.fallbackToMlKit,
             searchMode = container.searchSettings.mode,
             settingsBingEndpoint = container.searchSettings.endpoint,
@@ -229,6 +241,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun fillDemo() = _ui.update {
         it.copy(
             scanText = DEMO_QUESTION,
+            scanMarkdown = "",
             referenceAnswer = DEMO_REFERENCE,
             studentAnswer = DEMO_STUDENT,
             imagePath = null,
@@ -383,7 +396,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             for ((index, page) in pages.withIndex()) {
                 _ui.update { it.copy(segmentStage = "正在识别第 ${index + 1}/${pages.size} 页…") }
                 when (val recognized = recognizeText(File(page.imagePath))) {
-                    is Outcome.Success -> pageTexts += recognized.value
+                    is Outcome.Success -> pageTexts += recognized.value.plainText
                     is Outcome.Failure -> {
                         pageTexts += ""
                         warnings += "第 ${index + 1} 页识别失败：${recognized.error.userMessage}"
@@ -675,7 +688,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             current.practicePages.forEachIndexed { i, page ->
                 _ui.update { it.copy(practiceStage = "正在识别第 ${i + 1}/${current.practicePages.size} 页答题卡…") }
                 when (val recognized = recognizeText(File(page.imagePath))) {
-                    is Outcome.Success -> texts += recognized.value
+                    is Outcome.Success -> texts += recognized.value.plainText
                     is Outcome.Failure -> {
                         texts += ""
                         notify("第 ${i + 1} 页识别失败：${recognized.error.userMessage}", true)
@@ -785,11 +798,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         ),
     )
 
-    private suspend fun recognizeText(file: File): Outcome<String> {
+    private suspend fun recognizeText(file: File): Outcome<VisionDocument> {
         val uri = Uri.fromFile(file)
         val primary = container.visionEngine.recognize(uri)
         if (primary is Outcome.Failure &&
-            container.visionSettings.mode == VisionMode.MODLENS &&
+            container.visionSettings.mode != VisionMode.MLKIT &&
             container.visionSettings.fallbackToMlKit
         ) {
             val fallback = container.mlKitVisionEngine.recognize(uri)
@@ -801,17 +814,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun recognize(file: File, source: ExerciseSource) {
         val uri = Uri.fromFile(file)
         val primary = container.visionEngine.recognize(uri)
-        var result: Outcome<String> = primary
+        var result: Outcome<VisionDocument> = primary
         var fallbackNote: String? = null
         // modlens 不可用时自动回退离线 ML Kit（用户可在设置里关闭该行为）
         if (primary is Outcome.Failure &&
-            container.visionSettings.mode == VisionMode.MODLENS &&
+            container.visionSettings.mode != VisionMode.MLKIT &&
             container.visionSettings.fallbackToMlKit
         ) {
             val fallback = container.mlKitVisionEngine.recognize(uri)
             if (fallback is Outcome.Success) {
                 result = fallback
-                fallbackNote = "modlens 不可用，已自动回退 ML Kit（${primary.error.userMessage}）"
+                fallbackNote = "视觉接口不可用，已自动回退 ML Kit（${primary.error.userMessage}）"
             }
         }
         val finalResult = result
@@ -821,10 +834,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     ocrBusy = false,
                     imagePath = file.absolutePath,
                     imageSource = source,
-                    scanText = finalResult.value,
+                    scanText = finalResult.value.plainText,
+                    scanMarkdown = finalResult.value.markdown,
                     message = UiMessage(
-                        fallbackNote ?: "已用 ${container.visionEngine.displayName} 识别 ${finalResult.value.length} 个字符，" +
-                            "请核对/补全参考答案后分析",
+                        fallbackNote ?: "已用 ${container.visionEngine.displayName} 识别 ${finalResult.value.plainText.length} 个字符" +
+                            "（参考答案由 AI 自动生成）",
                         false,
                     ),
                 )
@@ -853,6 +867,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val input = ScanInput(
             rawText = text,
+            questionMarkdown = current.scanMarkdown,
             referenceAnswer = current.referenceAnswer,
             studentAnswer = current.studentAnswer,
             source = current.imageSource ?: ExerciseSource.MANUAL,
@@ -879,6 +894,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         performScan(
             ScanInput(
                 rawText = exercise.questionText,
+                questionMarkdown = exercise.questionMarkdown,
                 referenceAnswer = exercise.referenceAnswer,
                 studentAnswer = exercise.studentAnswer,
                 source = exercise.source,
@@ -1122,11 +1138,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun saveVisionSettings(mode: VisionMode, modlensUrl: String, fallbackToMlKit: Boolean) {
+    fun saveVisionSettings(
+        mode: VisionMode,
+        modlensUrl: String,
+        fallbackToMlKit: Boolean,
+        cloudEndpoint: String,
+        cloudApiKey: String,
+        cloudModel: String,
+    ) {
         val settings = VisionSettings(
             mode = mode,
             modlensUrl = modlensUrl.trim().ifBlank { VisionSettings.DEFAULT_MODLENS_URL },
             fallbackToMlKit = fallbackToMlKit,
+            cloudEndpoint = cloudEndpoint.trim().ifBlank { "https://api.openai.com/v1" },
+            cloudApiKey = cloudApiKey.trim(),
+            cloudModel = cloudModel.trim().ifBlank { "gpt-4o-mini" },
         )
         val engine = container.saveVision(settings)
         _ui.update {
@@ -1134,6 +1160,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 visionMode = settings.mode,
                 visionLabel = engine.displayName,
                 settingsModlensUrl = settings.modlensUrl,
+                settingsCloudVisionEndpoint = settings.cloudEndpoint,
+                settingsCloudVisionKey = settings.cloudApiKey,
+                settingsCloudVisionModel = settings.cloudModel,
                 settingsVisionFallback = settings.fallbackToMlKit,
                 message = UiMessage("视觉引擎已保存：${engine.displayName}", false),
             )

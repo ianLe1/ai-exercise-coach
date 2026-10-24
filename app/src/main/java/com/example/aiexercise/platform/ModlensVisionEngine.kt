@@ -30,7 +30,7 @@ class ModlensVisionEngine(
 
     override val isOffline: Boolean = false
 
-    override suspend fun recognize(uri: Uri): Outcome<String> = withContext(Dispatchers.IO) {
+    override suspend fun recognize(uri: Uri): Outcome<VisionDocument> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -57,7 +57,18 @@ class ModlensVisionEngine(
                     ),
                 )
             } else {
-                ModlensPayload.parseResponse(result.body)
+                when (val parsed = ModlensPayload.parseResponse(result.body)) {
+                    is Outcome.Success -> {
+                        val text = parsed.value.trim()
+                        val markdown = if (com.example.aiexercise.domain.LayoutFormatter.looksLikeMarkdown(text)) {
+                            text
+                        } else {
+                            com.example.aiexercise.domain.LayoutFormatter.toMarkdown(text)
+                        }
+                        Outcome.Success(VisionDocument(plainText = com.example.aiexercise.domain.LayoutFormatter.toPlainText(markdown), markdown = markdown))
+                    }
+                    is Outcome.Failure -> parsed
+                }
             }
         } catch (exception: Exception) {
             Log.w(TAG, "调用 modlens 桥失败（耗时 ${System.currentTimeMillis() - startedAt}ms）", exception)

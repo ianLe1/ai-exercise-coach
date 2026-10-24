@@ -62,6 +62,15 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
     val answerPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(9),
     ) { uris -> viewModel.onPracticePagesPicked(uris) }
+    var answerCameraFile by remember { mutableStateOf<java.io.File?>(null) }
+    val answerCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        answerCameraFile?.let { file ->
+            if (success) {
+                viewModel.onPracticePagesPicked(listOf(android.net.Uri.fromFile(file)))
+                viewModel.notify("已拍下第 ${state.practicePages.size + 1} 页答题卡，可继续拍", false)
+            }
+        }
+    }
     val aspects = state.data.knowledgePoints.filter { !it.archived }.flatMap { listOf(it.aspect, it.subject) }
         .map { it.trim() }
         .filter { it.isNotEmpty() }
@@ -78,7 +87,7 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
         ScreenHeader(
             title = "练习卷",
             subtitle = "按遗忘曲线挑选最该复习的知识点，交给 AI 生成结构化练习卷",
-            onBack = { viewModel.navigate(AppScreen.Settings) },
+            onBack = { viewModel.navigate(AppScreen.Home) },
         )
 
         ElevatedCard(Modifier.fillMaxWidth()) {
@@ -171,12 +180,23 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
                             )
                         },
                         enabled = !state.practiceBusy,
-                    ) { Text("选择答题卡照片") }
-                    Button(
-                        onClick = { paper?.let { viewModel.reviewPractice(it.id) } },
-                        enabled = paper != null && !state.practiceBusy && state.practicePages.isNotEmpty(),
-                    ) { Text(if (state.practiceBusy) "批改中…" else "开始批改") }
+                        modifier = Modifier.weight(1f),
+                    ) { Text("相册多选答题卡") }
+                    OutlinedButton(
+                        onClick = {
+                            val (file, uri) = viewModel.createCameraOutput()
+                            answerCameraFile = file
+                            answerCameraLauncher.launch(uri)
+                        },
+                        enabled = !state.practiceBusy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("相机拍第 ${state.practicePages.size + 1} 页") }
                 }
+                Button(
+                    onClick = { paper?.let { viewModel.reviewPractice(it.id) } },
+                    enabled = paper != null && !state.practiceBusy && state.practicePages.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (state.practiceBusy) "批改中…" else "开始批改（全部 ${state.practicePages.size} 页）") }
                 if (state.practiceBusy && state.practiceStage.isNotBlank()) {
                     Text(state.practiceStage, style = MaterialTheme.typography.labelSmall)
                 }

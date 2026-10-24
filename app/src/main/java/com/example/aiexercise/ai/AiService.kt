@@ -83,6 +83,8 @@ data class SegmentPayload(
 @Serializable
 data class AnalyzeRequest(
     val questionText: String,
+    /** 视觉识别出的排版 Markdown（可选）：题号/选项/公式更完整。 */
+    val questionMarkdown: String = "",
     val referenceAnswer: String = "",
     val studentAnswer: String = "",
     val subjectHint: String = "",

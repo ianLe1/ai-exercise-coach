@@ -58,7 +58,7 @@ fun PracticeReviewScreen(state: UiState, viewModel: AppViewModel) {
         ScreenHeader(
             title = "练习批改",
             subtitle = "扫描答题卡 → 逐题批改 → 仍不会的知识点 → 订正后再扫",
-            onBack = { viewModel.navigate(AppScreen.Settings) },
+            onBack = { viewModel.navigate(AppScreen.Home) },
         )
 
         if (review == null) {

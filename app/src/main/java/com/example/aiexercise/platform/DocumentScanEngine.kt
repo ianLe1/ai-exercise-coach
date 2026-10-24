@@ -20,7 +20,14 @@ import kotlin.coroutines.resume
  * 能力来自 `play-services-mlkit-document-scanner`；设备没有 Google Play 服务时会失败，
  * 此时 UI 回退到「相册多选 + 本地增强」（[ImageEnhancer]），仍支持多页与跨页分割。
  */
-class DocumentScanEngine(@Suppress("unused") private val context: Context) {
+class DocumentScanEngine(private val context: Context) {
+
+    /** 是否有可用的 ML Kit 文档扫描器（华为等无 Google 服务设备为 false）。 */
+    val isAvailable: Boolean
+        get() = runCatching {
+            com.google.android.gms.common.GoogleApiAvailability.getInstance()
+                .isGooglePlayServicesAvailable(context) == com.google.android.gms.common.ConnectionResult.SUCCESS
+        }.getOrDefault(false)
 
     /** 发起一次多页扫描（结果通过 ActivityResult 返回，用 [parseResult] 解析）。 */
     suspend fun startIntent(activity: Activity, pageLimit: Int = 20): Outcome<IntentSender> {

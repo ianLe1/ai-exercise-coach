@@ -49,6 +49,9 @@ class AiSettingsStore(context: Context) {
         return VisionSettings(
             mode = mode,
             modlensUrl = prefs.getString(KEY_MODLENS_URL, VisionSettings.DEFAULT_MODLENS_URL).orEmpty(),
+            cloudEndpoint = prefs.getString(KEY_CLOUD_VISION_ENDPOINT, "https://api.openai.com/v1").orEmpty(),
+            cloudApiKey = prefs.getString(KEY_CLOUD_VISION_KEY, "").orEmpty(),
+            cloudModel = prefs.getString(KEY_CLOUD_VISION_MODEL, "gpt-4o-mini").orEmpty(),
             fallbackToMlKit = prefs.getBoolean(KEY_VISION_FALLBACK, true),
         )
     }
@@ -57,6 +60,9 @@ class AiSettingsStore(context: Context) {
         prefs.edit()
             .putString(KEY_VISION_MODE, settings.mode.name)
             .putString(KEY_MODLENS_URL, settings.modlensUrl.trim())
+            .putString(KEY_CLOUD_VISION_ENDPOINT, settings.cloudEndpoint.trim())
+            .putString(KEY_CLOUD_VISION_KEY, settings.cloudApiKey.trim())
+            .putString(KEY_CLOUD_VISION_MODEL, settings.cloudModel.trim())
             .putBoolean(KEY_VISION_FALLBACK, settings.fallbackToMlKit)
             .apply()
     }
@@ -105,6 +111,9 @@ class AiSettingsStore(context: Context) {
         const val KEY_VISION_MODE = "vision_mode"
         const val KEY_MODLENS_URL = "modlens_url"
         const val KEY_VISION_FALLBACK = "vision_fallback"
+        const val KEY_CLOUD_VISION_ENDPOINT = "cloud_vision_endpoint"
+        const val KEY_CLOUD_VISION_KEY = "cloud_vision_key"
+        const val KEY_CLOUD_VISION_MODEL = "cloud_vision_model"
         const val KEY_SEARCH_MODE = "search_mode"
         const val KEY_BING_ENDPOINT = "bing_endpoint"
         const val KEY_BING_KEY = "bing_api_key"

@@ -15,6 +15,9 @@ enum class VisionMode {
      * 模拟器推荐先 `adb reverse tcp:8765 tcp:8765`，桥地址填 http://127.0.0.1:8765（部分镜像的 10.0.2.2 不可达）。
      */
     MODLENS,
+
+    /** 内置多模态视觉：App 内直接调用 OpenAI 兼容的多模态接口（无需本机桥），返回排版 Markdown。 */
+    CLOUD,
 }
 
 data class VisionSettings(
@@ -23,6 +26,10 @@ data class VisionSettings(
     val modlensUrl: String = DEFAULT_MODLENS_URL,
     /** modlens 失败时是否自动回退 ML Kit（保证离线也能用）。 */
     val fallbackToMlKit: Boolean = true,
+    /** 内置多模态接口（OpenAI 兼容，如 https://api.openai.com/v1）。 */
+    val cloudEndpoint: String = "https://api.openai.com/v1",
+    val cloudApiKey: String = "",
+    val cloudModel: String = "gpt-4o-mini",
 ) {
     companion object {
         const val DEFAULT_MODLENS_URL = "http://10.0.2.2:8765"

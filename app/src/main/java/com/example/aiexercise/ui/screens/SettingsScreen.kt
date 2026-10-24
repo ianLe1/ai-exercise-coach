@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
@@ -21,7 +19,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,8 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.aiexercise.ai.AiMode
-import com.example.aiexercise.ai.SearchMode
-import com.example.aiexercise.ai.VisionMode
 import com.example.aiexercise.ui.AppScreen
 import com.example.aiexercise.ui.AppViewModel
 import com.example.aiexercise.ui.UiState
@@ -41,10 +36,10 @@ import com.example.aiexercise.ui.components.ScreenHeader
 import com.example.aiexercise.ui.components.SectionHeader
 
 /**
- * 设置页：
- * - AI 引擎（离线规则 / OpenAI 兼容接口，可替换为任意厂商）；
- * - 提问者信息（AI 生成知识点与出卷时会参考年级、目标）；
- * - 本地数据管理。
+ * 设置页只保留两块：
+ * 1. 大模型（离线规则 / OpenAI 兼容接口）；
+ * 2. 用户信息（称呼、年级、目标）。
+ * 视觉识别、联网搜索、教材知识库都走内置默认实现，不再暴露配置项。
  */
 @Composable
 fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
@@ -52,14 +47,6 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
     var baseUrl by remember(state.settingsBaseUrl) { mutableStateOf(state.settingsBaseUrl) }
     var apiKey by remember(state.settingsApiKey) { mutableStateOf(state.settingsApiKey) }
     var model by remember(state.settingsModel) { mutableStateOf(state.settingsModel) }
-
-    var visionMode by remember(state.visionMode) { mutableStateOf(state.visionMode) }
-    var modlensUrl by remember(state.settingsModlensUrl) { mutableStateOf(state.settingsModlensUrl) }
-    var visionFallback by remember(state.settingsVisionFallback) { mutableStateOf(state.settingsVisionFallback) }
-
-    var searchMode by remember(state.searchMode) { mutableStateOf(state.searchMode) }
-    var bingEndpoint by remember(state.settingsBingEndpoint) { mutableStateOf(state.settingsBingEndpoint) }
-    var bingKey by remember(state.settingsBingKey) { mutableStateOf(state.settingsBingKey) }
 
     var askerName by remember(state.askerName) { mutableStateOf(state.askerName) }
     var askerGrade by remember(state.askerGrade) { mutableStateOf(state.askerGrade) }
@@ -74,37 +61,13 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
     ) {
         ScreenHeader(
             title = "设置",
-            subtitle = "练习卷 / 批改入口与全部可配置项都在这里",
+            subtitle = "只保留大模型与用户信息",
             onBack = { viewModel.navigate(AppScreen.Home) },
         )
 
-        // 首页只保留知识点列表 + 扫描，练习卷与批改收进这里
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("练习卷与批改")
-                Text(
-                    "生成练习卷 → 在纸上完成 → 扫描答题卡批改 → 订正后再扫。作答写在纸上，参考答案由 AI 生成。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { viewModel.navigate(AppScreen.Paper) },
-                        modifier = Modifier.weight(1f),
-                    ) { Text("练习卷 / 批改") }
-                    if (state.lastReview != null) {
-                        OutlinedButton(
-                            onClick = { viewModel.openLastReview() },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("上次批改") }
-                    }
-                }
-            }
-        }
-
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("AI 引擎")
+                SectionHeader("大模型")
                 Text(
                     "当前：${state.aiLabel}（${if (state.aiMode == AiMode.OFFLINE) "离线，无需网络" else "云端"}）",
                     style = MaterialTheme.typography.bodySmall,
@@ -170,126 +133,7 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
 
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("视觉识别（扫描）")
-                Text(
-                    "当前：${state.visionLabel}。图片只在本机（或本机运行的桥接服务）处理。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                ModeRow(
-                    label = "ML Kit 中文 OCR（离线，默认）",
-                    selected = visionMode == VisionMode.MLKIT,
-                    onSelect = { visionMode = VisionMode.MLKIT },
-                )
-                ModeRow(
-                    label = "modlens 视觉桥（多模态模型读题，需先运行 tools/modlens-bridge）",
-                    selected = visionMode == VisionMode.MODLENS,
-                    onSelect = { visionMode = VisionMode.MODLENS },
-                )
-                OutlinedTextField(
-                    value = modlensUrl,
-                    onValueChange = { modlensUrl = it },
-                    label = { Text("桥接地址（模拟器：adb reverse tcp:8765 tcp:8765 后填 http://127.0.0.1:8765；或 http://10.0.2.2:8765）") },
-                    singleLine = true,
-                    enabled = visionMode == VisionMode.MODLENS,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = visionFallback, onCheckedChange = { visionFallback = it })
-                    Text("modlens 失败时自动回退 ML Kit", style = MaterialTheme.typography.bodyMedium)
-                }
-                Button(
-                    onClick = { viewModel.saveVisionSettings(visionMode, modlensUrl, visionFallback) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("保存视觉设置") }
-            }
-        }
-
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("联网搜索（必应）")
-                Text(
-                    "用于在识别结果页搜索「本题相关资料 / 同类题」。需要 Azure 必应搜索 API Key；关闭时该入口隐藏。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                ModeRow(
-                    label = "关闭",
-                    selected = searchMode == SearchMode.OFF,
-                    onSelect = { searchMode = SearchMode.OFF },
-                )
-                ModeRow(
-                    label = "必应 Web Search API v7",
-                    selected = searchMode == SearchMode.BING,
-                    onSelect = { searchMode = SearchMode.BING },
-                )
-                OutlinedTextField(
-                    value = bingEndpoint,
-                    onValueChange = { bingEndpoint = it },
-                    label = { Text("端点（默认 https://api.bing.microsoft.com/v7.0/search）") },
-                    singleLine = true,
-                    enabled = searchMode == SearchMode.BING,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = bingKey,
-                    onValueChange = { bingKey = it },
-                    label = { Text("Ocp-Apim-Subscription-Key（仅存本机）") },
-                    singleLine = true,
-                    enabled = searchMode == SearchMode.BING,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Button(
-                    onClick = { viewModel.saveSearchSettings(searchMode, bingEndpoint, bingKey) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("保存搜索设置") }
-            }
-        }
-
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionHeader("教材知识库（ChinaTextbook）")
-                Text(
-                    "AI 分类知识点前的自动资料检索会到教材 / 教师用书里找依据。" +
-                        "需要先在电脑上启动 ChinaTextbook 检索服务（默认 http://127.0.0.1:8737，见知识库包里的 restore.sh / PACKAGE-INFO）；" +
-                        "模拟器请先 adb reverse tcp:8737 tcp:8737。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "当前：${state.kbLabel}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Checkbox(
-                        checked = state.kbEnabled,
-                        onCheckedChange = {
-                            viewModel.saveKnowledgeSettings(it, state.settingsKbEndpoint)
-                        },
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("启用教材知识库检索", style = MaterialTheme.typography.bodyMedium)
-                }
-                OutlinedTextField(
-                    value = state.settingsKbEndpoint,
-                    onValueChange = viewModel::updateSettingsKbEndpoint,
-                    label = { Text("服务地址（默认 http://127.0.0.1:8737）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Button(
-                    onClick = {
-                        viewModel.saveKnowledgeSettings(state.kbEnabled, state.settingsKbEndpoint)
-                    },
-                ) { Text("保存知识库设置") }
-            }
-        }
-
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("提问者信息")
+                SectionHeader("用户信息")
                 Text(
                     "AI 生成知识点与练习卷时会参考这些信息（年级、学习目标）调整难度与措辞。",
                     style = MaterialTheme.typography.bodySmall,
@@ -317,54 +161,10 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Button(onClick = { viewModel.saveAsker(askerName, askerGrade, askerGoal) }) {
-                    Text("保存提问者信息")
+                    Text("保存用户信息")
                 }
             }
         }
-
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionHeader("本地数据")
-                Text(
-                    "习题 ${state.data.exercises.size} 道 · 知识点 ${state.data.knowledgePoints.size} 条 · " +
-                        "批改记录 ${state.data.grades.size} 条 · 练习卷 ${state.data.papers.size} 份",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "存储位置：应用私有目录 data/app_data.json（原子写入）。数据模型与存储实现均可替换。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                OutlinedButton(onClick = viewModel::requestClearData) {
-                    Text("清空所有本地数据")
-                }
-            }
-        }
-
-        Text(
-            "可替换点：① 视觉引擎（platform/VisionEngine.kt：ML Kit 离线 / ModlensVisionEngine 桥接，可再加云端 OCR）；" +
-                "② AI 服务（ai/AiService.kt + AiServiceFactory，当前离线规则 + OpenAI 兼容接口）；" +
-                "③ 联网搜索（ai/BingSearchService.kt 的 SearchService 接口，可换 Google/Brave/SearXNG）；" +
-                "④ 存储（data/store/AppDataStore.kt，当前单文件 JSON）；" +
-                "⑤ 遗忘曲线参数（domain/ForgettingCurve.kt 的 ForgettingCurveConfig）；" +
-                "⑥ 判重策略（domain/ToolConfig.kt 的 similarityThreshold 与 ExerciseIdentity 归一化规则）；⑦ 教材知识库（domain/KnowledgeBase.kt 的 KnowledgeBase 接口，当前接 ChinaTextbook-KB 的 HTTP 检索服务）；⑧ 题目分割与答题卡 JSON（domain/QuestionSegmenter.kt、domain/AnswerSheet.kt）。",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-
-    if (state.showClearDialog) {
-        AlertDialog(
-            onDismissRequest = viewModel::dismissClearDialog,
-            title = { Text("清空所有本地数据？") },
-            text = { Text("将删除全部习题、知识点、计时器、批改记录与练习卷，且不可恢复。") },
-            confirmButton = {
-                TextButton(onClick = viewModel::clearAllData) { Text("确认清空") }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissClearDialog) { Text("取消") }
-            },
-        )
     }
 }
 

@@ -242,7 +242,12 @@ class OpenAiCompatibleAiService(
             if (asker.goal.isNotBlank()) appendLine("- 学习目标：${asker.goal}")
             appendLine()
             appendLine("【习题】")
-            appendLine(clip(request.questionText, 3000))
+            appendLine(
+                clip(
+                    request.questionMarkdown.ifBlank { request.questionText },
+                    3000,
+                ),
+            )
             appendLine()
             appendLine("【参考答案】")
             appendLine(request.referenceAnswer.ifBlank { "（未提供）" }.let { clip(it, 2000) })
@@ -328,7 +333,8 @@ class OpenAiCompatibleAiService(
         )
     }
 
-    private fun buildGradePrompt(request: GradeRequest): String {        val asker = request.asker
+    private fun buildGradePrompt(request: GradeRequest): String {
+        val asker = request.asker
         return buildString {
             appendLine("请批改下面这道习题的作答。")
             appendLine()

@@ -27,7 +27,7 @@ app/src/main/java/com/example/aiexercise/
 ├── platform/   # Android 实现：视觉引擎、图像存储、SharedPreferences、依赖容器
 └── ui/         # ViewModel + Compose 界面（扫描/结果/知识点/练习卷/设置）
 tools/modlens-bridge/   # 把本机 modlens CLI 包成 HTTP /analyze 的 Node 桥
-screenshots/            # 模拟器端到端验收截图（01–31）
+screenshots/            # 模拟器端到端验收截图（01–37）
 ```
 
 ## 构建与测试
@@ -52,13 +52,16 @@ screenshots/            # 模拟器端到端验收截图（01–31）
 5. **密钥不进仓库**：必应 Key / OpenAI Key 只在 App 设置页由用户填写（SharedPreferences）；仓库内只允许占位与 stub。
 6. **改 UI 要同步截图与 README**：更新 `screenshots/` 与 README 的「运行截图」清单。
 
-7. **界面极简**：首页（`ui/screens/HomeScreen.kt`）只允许「按复习时间排序的知识点列表 + 扫描按钮」；练习卷/批改/视觉/搜索/知识库配置一律放在设置页（`AppScreen.Settings`），不要再加底部 Tab。参考答案不由用户填写，缺省时走 `AiService.solve` 自动生成。
+7. **视觉结果要带排版**：`VisionEngine.recognize` 返回 `VisionDocument(plainText, markdown)`；纯文本用于 `QuestionSegmenter` 切题，Markdown 存进 `Exercise.questionMarkdown` 并随 `AnalyzeRequest.questionMarkdown` 交给 AI。新增视觉实现必须同时给出两者，排版整理统一走纯 Kotlin 的 `domain/LayoutFormatter.kt`（有单测）。
 
-8. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
+8. **界面极简**：首页（`ui/screens/HomeScreen.kt`）只允许「按复习时间排序的知识点列表 + 扫描按钮」；练习卷/批改入口在扫描页底部；设置页只保留「大模型 + 用户信息」两块。参考答案不由用户填写，缺省时走 `AiService.solve` 自动生成。
+   扫描器必须在无 Google 服务（华为）设备上可用：`DocumentScanEngine.isAvailable` 为 false 时按钮退化为内置拍照扫描（相机逐页 + `ImageEnhancer` 增强后追加 `scanPages`）；答题卡批改只保留多页入口（相册多选 / 相机逐页）。
 
-9. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
-10. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
-11. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
+9. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
+
+10. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
+11. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
+12. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
 
 ## 构建性能（本机）
 

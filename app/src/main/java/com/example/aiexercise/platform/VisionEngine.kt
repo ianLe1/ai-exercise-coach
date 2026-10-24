@@ -30,8 +30,15 @@ interface VisionEngine {
     /** 是否离线可用。 */
     val isOffline: Boolean
 
-    suspend fun recognize(uri: Uri): Outcome<String>
+    /** 返回结构化结果：plainText 用于按题号切分，markdown 保留题号/选项/段落等排版。 */
+    suspend fun recognize(uri: Uri): Outcome<VisionDocument>
 }
+
+/** 一次识别的两种表示：原始文本（切题用）与排版后的 Markdown（阅读/给 AI 用）。 */
+data class VisionDocument(
+    val plainText: String,
+    val markdown: String,
+)
 
 /** 默认实现：ML Kit 中文文字识别（设备端离线模型，图片不出本机）。 */
 class MlKitVisionEngine(private val context: Context) : VisionEngine {
@@ -44,7 +51,7 @@ class MlKitVisionEngine(private val context: Context) : VisionEngine {
         TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
     }
 
-    override suspend fun recognize(uri: Uri): Outcome<String> = withContext(Dispatchers.IO) {
+    override suspend fun recognize(uri: Uri): Outcome<VisionDocument> = withContext(Dispatchers.IO) {
         try {
             val image = InputImage.fromFilePath(context, uri)
             val text = suspendCancellableCoroutine<String> { continuation ->
@@ -58,7 +65,7 @@ class MlKitVisionEngine(private val context: Context) : VisionEngine {
                     AppError.UnrecognizedInput("OCR 结果过短（\"$trimmed\"），可能是图片模糊或没有文字"),
                 )
             } else {
-                Outcome.Success(trimmed)
+                Outcome.Success(VisionDocument(plainText = trimmed, markdown = com.example.aiexercise.domain.LayoutFormatter.toMarkdown(trimmed)))
             }
         } catch (exception: Exception) {
             Outcome.Failure(
@@ -77,5 +84,6 @@ object VisionEngineFactory {
     fun create(context: Context, settings: VisionSettings): VisionEngine = when (settings.mode) {
         VisionMode.MLKIT -> MlKitVisionEngine(context)
         VisionMode.MODLENS -> ModlensVisionEngine(context, settings.modlensUrl)
+        VisionMode.CLOUD -> CloudVisionEngine(context, settings)
     }
 }
