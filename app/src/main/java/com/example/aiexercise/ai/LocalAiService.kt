@@ -238,11 +238,7 @@ class LocalAiService : AiService {
                 "application" -> applicationQuestion(id, index + 1, point, difficulty)
                 else -> recallQuestion(id, index + 1, point, difficulty)
             }
-            val sectionMark = if (index == 0 ||
-                (index == (request.count * 8 + 19) / 20) ||
-                (index == (request.count * 8 + 19) / 20 + (request.count * 6 + 19) / 20)
-            ) "$section\n\n" else ""
-            questions += question.copy(questionMarkdown = sectionMark + question.questionMarkdown)
+            questions += question.copy(section = section)
         }
         val titles = request.knowledgePoints.joinToString("、") { it.title }
         val payload = PaperPayload(
@@ -267,10 +263,6 @@ class LocalAiService : AiService {
         type = "recall",
         difficulty = difficulty,
         questionMarkdown = buildString {
-            appendLine("### 第 $number 题（概念复述 · $difficulty）")
-            appendLine()
-            appendLine("**考点：** ${point.title}")
-            appendLine()
             append("请在不看资料的情况下，写出「${point.title}」的**定义 / 公式 / 关键步骤**，并注明 1 个适用条件。")
         },
         answerMarkdown = "**参考要点：** " + point.detail.ifBlank { "以教材定义为准，覆盖“定义 → 公式 → 适用条件”三部分。" },
@@ -289,10 +281,6 @@ class LocalAiService : AiService {
         type = "choice",
         difficulty = difficulty,
         questionMarkdown = buildString {
-            appendLine("### 第 $number 题（辨析选择 · $difficulty）")
-            appendLine()
-            appendLine("**考点：** ${point.title}")
-            appendLine()
             appendLine("处理「${point.title}」相关问题时，下列做法最恰当的是（　）")
             appendLine()
             appendLine("A. 只背结论，不推导过程")
@@ -317,10 +305,6 @@ class LocalAiService : AiService {
         type = "application",
         difficulty = difficulty,
         questionMarkdown = buildString {
-            appendLine("### 第 $number 题（迁移应用 · $difficulty）")
-            appendLine()
-            appendLine("**考点：** ${point.title}")
-            appendLine()
             appendLine("从你最近的错题中找一道考查「${point.title}」的题，完成：")
             appendLine()
             appendLine("1. 写出它考查的核心概念；")

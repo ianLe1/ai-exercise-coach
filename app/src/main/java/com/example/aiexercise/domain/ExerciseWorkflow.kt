@@ -6,6 +6,7 @@ import com.example.aiexercise.ai.AnalyzeRequest
 import com.example.aiexercise.ai.GradeRequest
 import com.example.aiexercise.ai.KpDraft
 import com.example.aiexercise.ai.KpGenerationPayload
+import com.example.aiexercise.ai.LocalAiService
 import com.example.aiexercise.ai.PaperPayload
 import com.example.aiexercise.ai.PaperRequest
 import com.example.aiexercise.ai.SolveRequest
@@ -495,18 +496,21 @@ class ExerciseToolkit(
             }
             .take(maxOf(1, minOf(count, config.maxKnowledgePointsPerPaper)))
         val questionCount = count.coerceIn(1, config.maxQuestionsPerPaper)
-        val payload = when (
-            val result = ai.generatePaper(
-                PaperRequest(
-                    aspect = requestedAspect.ifBlank { "全部" },
-                    count = questionCount,
-                    asker = data.asker,
-                    knowledgePoints = selected,
-                ),
-            )
-        ) {
-            is Outcome.Failure -> return result
+        val request = PaperRequest(
+            aspect = requestedAspect.ifBlank { "全部" },
+            count = questionCount,
+            asker = data.asker,
+            knowledgePoints = selected,
+        )
+        val payload = when (val result = ai.generatePaper(request)) {
             is Outcome.Success -> result.value
+            is Outcome.Failure -> {
+                // 云端不可用或结构不合规：用离线模板兜底，保证始终有一张结构规范的整卷
+                when (val offline = LocalAiService().generatePaper(request)) {
+                    is Outcome.Success -> offline.value
+                    is Outcome.Failure -> return result
+                }
+            }
         }
         val validated = when (val result = validatePaperPayload(payload)) {
             is Outcome.Failure -> return result
@@ -557,7 +561,13 @@ class ExerciseToolkit(
         if (questions.isEmpty()) {
             return Outcome.Failure(AppError.GenerationInvalid("AI 返回的 questions 为空，或题面/答案缺失"))
         }
-        return Outcome.Success(payload.copy(questions = questions))
+        val enforced = PaperStructure.enforce(questions)
+            ?: return Outcome.Failure(
+                AppError.GenerationInvalid(
+                    "试卷结构不合规：需要三大题（选择题/填空题/解答题）、每题有分值且全卷合计 100 分、选择题至少 2 个选项",
+                ),
+            )
+        return Outcome.Success(payload.copy(questions = enforced))
     }
 
     /* --------------------------- 复习 / 维度 --------------------------- */

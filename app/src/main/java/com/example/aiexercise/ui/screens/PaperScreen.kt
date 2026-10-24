@@ -184,9 +184,28 @@ private fun PaperContent(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                "总分 100 分 · 考试时间 90 分钟 · 共 ${paper.questions.size} 题",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             HorizontalDivider()
-            paper.questions.forEachIndexed { index, question ->
-                QuestionCard(index = index, question = question)
+            var questionNo = 0
+            com.example.aiexercise.domain.PaperStructure.groupBySection(paper.questions).forEach { (section, questions) ->
+                Text(
+                    section,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    "共 ${questions.size} 题 · ${questions.sumOf { it.score }} 分",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                questions.forEach { question ->
+                    questionNo += 1
+                    QuestionCard(index = questionNo - 1, question = question)
+                }
             }
             HorizontalDivider()
             Text(
@@ -226,6 +245,8 @@ private fun QuestionCard(index: Int, question: PaperQuestion) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Tag("第 ${index + 1} 题")
+                Spacer(Modifier.width(8.dp))
+                Tag("${question.score} 分")
                 Spacer(Modifier.width(8.dp))
                 Tag(difficultyLabel(question.difficulty), containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
                 Spacer(Modifier.width(8.dp))

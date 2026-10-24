@@ -126,6 +126,10 @@ data class PaperQuestion(
     val id: String,
     val type: String = "solution",
     val difficulty: String = "medium",
+    /** 大题：一、选择题 / 二、填空题 / 三、解答题。 */
+    val section: String = "",
+    /** 本题分值（全卷 100 分）。 */
+    val score: Int = 0,
     val questionMarkdown: String,
     val options: List<String> = emptyList(),
     val answerMarkdown: String,

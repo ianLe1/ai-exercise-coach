@@ -425,6 +425,7 @@ class OpenAiCompatibleAiService(
             appendLine("要求：")
             appendLine("1. 只输出 JSON，不要输出 JSON 之外的任何文字；")
             appendLine("2. 题面 questionMarkdown 必须使用 Markdown（标题、列表、粗体；公式可写 LaTeX，如 \$x^2\$）；")
+            appendLine("2.1 每题必须给出 section（一、选择题 / 二、填空题 / 三、解答题）与 score（本题分值，全卷合计必须正好 100 分）；")
             appendLine("3. 每道题必须给出 answerMarkdown 与 explanationMarkdown，选择题必须给出 4 个选项；")
             appendLine("3.1 answerSheet 是“答题卡结构”，只描述答题区，不含题干：数字=答题区行数，数组=选择题选项，字符串=填空题模板（用 ___ 表示填空位置）；必须有大题与题，小题可有可无；")
             appendLine("4. 题目要覆盖上面的知识点，优先考察最紧迫的；难度混合 easy/medium/hard；")
@@ -441,6 +442,8 @@ class OpenAiCompatibleAiService(
                     {
                       "id": "Q1",
                       "type": "choice 或 solution",
+                      "section": "一、选择题 / 二、填空题 / 三、解答题（必须三选一）",
+                      "score": 4,
                       "difficulty": "easy/medium/hard",
                       "questionMarkdown": "Markdown 题面",
                       "options": ["A. ...", "B. ..."],
