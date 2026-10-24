@@ -55,8 +55,14 @@ screenshots/            # 模拟器端到端验收截图（01–29）
 7. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
 
 8. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
-7. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
-8. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
+9. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
+10. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
+
+## 构建性能（本机）
+
+- `gradle.properties` 已调优（6G 堆 / parallel / build cache / configuration cache / Kotlin daemon 3G）；改构建参数时先量一下 `:app:clean :app:assembleDebug`（本机 ≈1m42s）与增量构建（≈5s）。
+- **不要把 `.gradle-home/`、`.android-home/` 提交或让 IDE 索引**（沙箱下命令行构建用，约 1.8G），否则 Android Studio 首次同步/索引会非常慢。
+- 首次 Gradle Sync 要下载 AGP/Compose/ML Kit 依赖（一次性，本机实测 27 分钟），之后为秒级。
 
 ## 提交与发布
 

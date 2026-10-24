@@ -310,6 +310,34 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/28_guided_tutor.png` 对错题的引导式提问（多轮追问、不直接给答案）
 - `screenshots/29_round2_correction.png` 订正后再扫：第 2 轮、订正质量过低 → 暂不开放提问
 
+## 构建速度（Android Studio / 命令行）
+
+本机实测（16 核 / 32G，Gradle 9.6.0 + AGP 9.4.1 + Kotlin 2.2.10）：
+
+| 场景 | 耗时 |
+| --- | --- |
+| 全量构建（`:app:clean :app:assembleDebug`） | ≈ 1 分 42 秒 |
+| 改一个 Kotlin 文件后增量构建 | ≈ 5 秒 |
+| 无改动（全部 up-to-date） | ≈ 3 秒 |
+| 91 个 JVM 单测 | ≈ 17 秒（daemon 热） |
+
+`gradle.properties` 已按本机调优：`-Xmx6144m` + `-XX:+UseParallelGC`、`org.gradle.parallel`、`org.gradle.caching`、`org.gradle.configuration-cache`、`kotlin.daemon.jvmargs=-Xmx3072m`。
+
+**Android Studio 首次打开慢，通常是下面几件事（按收益从高到低）：**
+
+1. **首次 Gradle Sync 要下载依赖**：AGP / Compose / ML Kit 中文 OCR（含 ~40MB 模型）首次 sync 在本机实测 27 分钟，属网络下载一次性成本；之后 sync 是秒级（日志会显示 `Up-to-date models found in the cache`）。
+2. **IDE 堆太小**：AS 默认 `-Xmx2048m`，Compose 工程里会频繁 GC/卡顿。`Help → Edit Custom VM Options` 改成 `-Xmx4096m`（或 6144m）后重启。
+3. **项目内的 `.gradle-home/`、`.android-home/` 不要在 IDE 里保留**：这两个目录（合计 ≈1.8G）是本项目在没有 `~/.gradle` 写权限的沙箱里跑命令行构建用的；正常 Android Studio 用 `~/.gradle` 即可。放进项目里会让 IDE 文件索引与内置 AI 索引（日志里的 `aiplugin.rag.bm25.lucindex`）扫描几万个 jar/元数据，明显拖慢打开与全文索引。处理方式：`Project` 视图右键 → **Mark Directory as → Excluded**，或直接删除（`.gitignore` 已忽略，需要时命令行构建会重新生成）。
+4. **Gradle JDK 选 21**：`Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK` 选 `jbr-21`（AS 自带），不要用 1.8/11 的旧 JDK，否则 Kotlin/AGP 会重新拉起 daemon。
+5. 只跑测试或装 APK 时，命令行比 IDE 快很多：
+   ```bash
+   GRADLE_USER_HOME=$PWD/.gradle-home ANDROID_USER_HOME=$PWD/.android-home \
+     /home/lee/.gradle/wrapper/dists/gradle-9.6.0-bin/42k10rwplmzkhuboz9kdazi7s/gradle-9.6.0/bin/gradle \
+     :app:testDebugUnitTest :app:assembleDebug --console=plain
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
+6. 调试包 59MB，主要是 ML Kit 中文 OCR 的打包模型；如果更在意安装/打包速度、可以联网下载模型，可把 `libs.versions.toml` 里 `mlkit-text-recognition-chinese` 换成 Play Services 的非打包版（`play-services-mlkit-text-recognition-chinese`），APK 会降到 ≈20MB，但首次识别需要联网下载模型，离线场景改用 modlens 桥或手输。
+
 ## 环境说明（本机沙箱）
 
 - `~/.gradle` 在本机沙箱内只读，因此用仓库内 `.gradle-home/`（已 `.gitignore`）复用依赖缓存；`ANDROID_USER_HOME` 指向 `.android-home/`。
