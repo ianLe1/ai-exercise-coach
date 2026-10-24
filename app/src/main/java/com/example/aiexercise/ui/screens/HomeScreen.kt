@@ -12,12 +12,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -35,10 +42,33 @@ import com.example.aiexercise.ui.components.KnowledgePointCard
 @Composable
 fun HomeScreen(state: UiState, viewModel: AppViewModel) {
     val now = System.currentTimeMillis()
+    var showWelcome by remember { mutableStateOf(false) }
+    // 第一次使用：用户信息为空时提示填写（年级/目标会影响 AI 生成的知识点与练习卷）
+    LaunchedEffect(state.data.asker) {
+        val asker = state.data.asker
+        showWelcome = asker.name.isBlank() && asker.gradeLevel.isBlank() && asker.goal.isBlank()
+    }
     val points = state.data.knowledgePoints
         .filter { !it.archived }
         .sortedByDescending { ForgettingCurve.urgency(it.timer, it.mastery, now) }
     val dueCount = points.count { ForgettingCurve.isDue(it.timer, now) }
+
+    if (showWelcome) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("第一次使用，先填一下你的信息") },
+            text = { Text("填一下称呼、年级和学习目标，AI 会按你的水平调整知识点与练习难度。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWelcome = false
+                    viewModel.navigate(AppScreen.Settings)
+                }) { Text("去填写") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWelcome = false }) { Text("稍后") }
+            },
+        )
+    }
 
     Column(
         modifier = Modifier

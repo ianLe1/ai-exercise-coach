@@ -77,6 +77,8 @@ data class UiState(
     val scanPages: List<ScanPage> = emptyList(),
     val scanPaperId: String = "",
     val segments: List<ScanResult> = emptyList(),
+    /** 本次扫描按纸面作答批改的结果：exerciseId → 批改结果。 */
+    val scanGrades: MutableMap<String, GradeResult> = mutableMapOf(),
     val segmentsBusy: Boolean = false,
     val segmentStage: String = "",
 
@@ -612,6 +614,45 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 screen = AppScreen.Segments,
                 message = UiMessage(message, saveError != null),
             )
+        }
+    }
+
+    /** 平时的扫描也要批改：用分割时抽取的纸面作答，逐题批改。 */
+    fun gradeScannedSegments() {
+        val current = _ui.value
+        if (current.segments.isEmpty() || current.busy) return
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true, scanStage = "准备批改…") }
+            val toolkit = newToolkit()
+            var data = current.data
+            val graded = current.scanGrades.toMutableMap()
+            val failures = mutableListOf<String>()
+            current.segments.forEachIndexed { index, segment ->
+                _ui.update { it.copy(scanStage = "正在批改第 ${index + 1}/${current.segments.size} 题…") }
+                when (val result = toolkit.grade(data, segment.exercise.id)) {
+                    is Outcome.Success -> {
+                        data = result.value.data
+                        graded[segment.exercise.id] = result.value.grade
+                    }
+                    is Outcome.Failure -> failures += "第 ${index + 1} 题：${result.error.userMessage}"
+                }
+            }
+            val saveError = persist(data)
+            val passed = graded.values.count { it.passed }
+            _ui.update {
+                it.copy(
+                    busy = false,
+                    scanStage = "",
+                    data = data,
+                    scanGrades = graded,
+                    message = UiMessage(
+                        "批改完成：${graded.size}/${current.segments.size} 题有作答并被批改，对 $passed 题。" +
+                            (failures.firstOrNull()?.let { "（${it}）" } ?: "") +
+                            (saveError?.let { "；保存失败：${it.userMessage}" } ?: ""),
+                        failures.isNotEmpty(),
+                    ),
+                )
+            }
         }
     }
 

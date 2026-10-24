@@ -81,9 +81,10 @@ class MlKitVisionEngine(private val context: Context) : VisionEngine {
 
 /** 视觉引擎工厂：按设置装配。 */
 object VisionEngineFactory {
-    fun create(context: Context, settings: VisionSettings): VisionEngine = when (settings.mode) {
-        VisionMode.MLKIT -> MlKitVisionEngine(context)
-        VisionMode.MODLENS -> ModlensVisionEngine(context, settings.modlensUrl)
-        VisionMode.CLOUD -> CloudVisionEngine(context, settings)
-    }
+    fun create(context: Context, settings: VisionSettings, aiSettings: com.example.aiexercise.ai.AiSettings): VisionEngine =
+        when (settings.mode) {
+            VisionMode.MLKIT -> MlKitVisionEngine(context)
+            VisionMode.MODLENS -> ModlensVisionEngine(context, settings.modlensUrl)
+            VisionMode.CLOUD -> CloudVisionEngine(context, settings, aiSettings)
+        }
 }

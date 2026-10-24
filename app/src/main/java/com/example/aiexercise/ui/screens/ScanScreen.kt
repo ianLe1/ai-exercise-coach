@@ -58,12 +58,8 @@ import java.io.File
  */
 @Composable
 fun ScanScreen(state: UiState, viewModel: AppViewModel) {
-    var cameraFile by remember { mutableStateOf<File?>(null) }
     val activity = LocalContext.current as? Activity
 
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        cameraFile?.let { file -> if (success) viewModel.onCameraCaptured(file) }
-    }
     // 无 Google 文档扫描器时：相机拍一页 → 本地增强 → 追加为扫描页（可反复拍）
     var pageCameraFile by remember { mutableStateOf<File?>(null) }
     val pageCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
@@ -73,9 +69,6 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
                 viewModel.notify("已拍照加入扫描页（可继续拍下一页）", false)
             }
         }
-    }
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let(viewModel::onGalleryPicked)
     }
     val galleryMultiLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_SCAN_PAGES),
@@ -127,58 +120,10 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
 
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("① 扫描习题")
+                SectionHeader("① 扫描习题（多页 · 自动矫正 · 分割题目）")
                 Text(
-                    "拍照或从相册选择，自动 OCR 识别题目文字；也可以直接手动输入。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            val (file, uri) = viewModel.createCameraOutput()
-                            cameraFile = file
-                            cameraLauncher.launch(uri)
-                        },
-                        enabled = !state.ocrBusy && !state.busy,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("拍照识别") }
-                    OutlinedButton(
-                        onClick = {
-                            galleryLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                            )
-                        },
-                        enabled = !state.ocrBusy && !state.busy,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("从相册选择") }
-                }
-                if (state.ocrBusy) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text("正在识别（${state.visionLabel}）…", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                state.imagePath?.let { path ->
-                    ImagePreview(path)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "已读取图片：${File(path).name}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
-
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("② 多页扫描（自动矫正 · 分割题目）")
-                Text(
-                    "多页试卷：文档扫描器会自动做透视矫正与增强；也可以从相册多选图片" +
-                        "（本地按 EXIF 摆正并提升对比度）。识别后会把题目一道一道切出来，跨页题自动合并。",
+                    "拍下整页试卷：有 Google 服务时用文档扫描器自动透视矫正与增强；没有时用「拍照扫描」逐页拍，" +
+                        "也可以从相册多选。识别后会把题目一道一道切出来，跨页题自动合并。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -278,16 +223,8 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
             }
         }
 
-        OutlinedTextField(
-            value = state.scanText,
-            onValueChange = viewModel::updateScanText,
-            label = { Text("题目内容（OCR 结果可编辑）") },
-            minLines = 5,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.ocrBusy,
-        )
         Text(
-            "参考答案由 AI 自动生成，你不用填写；作答写在纸上，做完后扫描答题卡批改。",
+            "识别后会把题目一道一道切出来并自动分析知识点；纸面上的作答也会被识别用于批改。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

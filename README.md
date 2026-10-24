@@ -11,8 +11,10 @@
 - 视觉扫描：默认 Google ML Kit 中文文字识别（端侧离线）；可切换 **modlens 视觉桥**（多模态模型读题，经 `tools/modlens-bridge` 本机 HTTP 桥接入，失败自动回退 ML Kit）。
 - 多页扫描：ML Kit 文档扫描器一次拍多页（自动透视矫正 + 增强），或相册多选后本地按 EXIF 摆正并提升对比度；OCR 后把题目**一道一道切出来**，跨页题自动合并，**每道题独立成为一条习题**（各自维护不会的知识点与遗忘曲线计时器）。
 - **界面只有两件事**：首页 = 按复习时间排序的「不会的知识点」列表 + 一个「扫描习题」按钮；练习卷/批改入口在扫描页底部，设置页只保留「大模型 + 用户信息」两块，不再有底部 Tab。
-- **不手填答案**：学生作答写在纸上，参考答案由 AI 读题自动生成（`AiService.solve`），扫描页只保留题目内容。
-- **视觉内置且带排版**：`VisionEngine` 返回 `VisionDocument(plainText, markdown)`；ML Kit 走 `LayoutFormatter` 把逐行 OCR 整理成 Markdown（题号加粗、选项列表、大题标题），新增「内置多模态视觉」直接调用 OpenAI 兼容接口按 Markdown + LaTeX 读题，不再依赖本机 modlens 桥（桥仍保留兼容）。
+- **不手填答案、也没有题目内容输入框**：学生作答写在纸上，参考答案由 AI 读题自动生成（`AiService.solve`）；扫描页只有拍照/相册，题目文本由 OCR + Markdown 排版得到，不允许手改。
+- **平时的扫描也批改**：多页扫描分割出题目后，分割结果页有「批改这次扫描（按纸面作答）」——用 OCR 里抽到的作答逐题批改并回写知识点。
+- **首次启动引导**：用户信息（称呼/年级/目标）为空时，首页弹窗提示先填写，再进入设置补全。
+- **视觉默认内置多模态、优先 modlens 式结构化**：`VisionEngine` 返回 `VisionDocument(plainText, markdown)`；默认走「内置多模态视觉」——直接用设置里的大模型（OpenAI 兼容）Key 按 Markdown + LaTeX 读题，题号/选项/公式结构化；没有 Key 或失败的设备自动回退 ML Kit。ML Kit 也会经 `LayoutFormatter` 整理成 Markdown。`tools/modlens-bridge` 仍保留为可选。
 - **华为等无 Google 服务设备**：`GmsDocumentScanning` 不可用时，扫描页的「文档扫描」自动变成「拍照扫描」——用系统相机一页一张、本地增强后追加到扫描页，可连续拍；批改答题卡同样支持「相机拍第 N 页」。
 - **完成练习的闭环**：生成练习卷 → 纸上作答 → 扫描答题卡（可多页）→ 逐题批改 → 列出**仍不会的知识点**；订正后再扫即第 N 轮，订正质量过低会拒绝引导式提问；作业与已维护的列表大相径庭时先问一句“这次是你自己认真做的吗”（首次使用必问，回答“没用心”则整次扫描忽略）。
 - **教材 / 教师用书知识库**：已接入 `ChinaTextbook-KB`（国家中小学智慧教育平台 **2,205 本**教材/教师用书的 SQLite FTS5 检索服务），作为 AI 分类知识点前的“教材依据”，命中会写进知识点证据并展示书名/页码。
@@ -321,6 +323,8 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/35_settings_compact.png` 设置页精简为「大模型 + 用户信息」
 - `screenshots/36_scan_layout_fixed.png` 扫描页排版修复（窄屏不溢出）
 - `screenshots/37_answer_sheet_multi.png` 答题卡批改只保留多页（相册多选 / 相机逐页）
+- `screenshots/38_scan_multi_only.png` 扫描页只剩多页扫描（单页入口与题目编辑框已删除）
+- `screenshots/39_first_run_profile.png` 第一次使用提示填写用户信息
 
 ## 构建速度（Android Studio / 命令行）
 

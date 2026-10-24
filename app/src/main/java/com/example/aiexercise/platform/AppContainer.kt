@@ -52,6 +52,7 @@ class AppContainer(context: Context) {
         settingsStore.save(settings)
         aiSettings = settings
         aiService = AiServiceFactory.create(settings)
+        visionEngine = VisionEngineFactory.create(appContext, visionSettings, settings)
         return aiService
     }
 
@@ -60,6 +61,7 @@ class AppContainer(context: Context) {
         val settings = settingsStore.load()
         aiSettings = settings
         aiService = AiServiceFactory.create(settings)
+        visionEngine = VisionEngineFactory.create(appContext, visionSettings, settings)
         return aiService
     }
 
@@ -73,13 +75,13 @@ class AppContainer(context: Context) {
         private set
 
     @Volatile
-    var visionEngine: VisionEngine = VisionEngineFactory.create(appContext, visionSettings)
+    var visionEngine: VisionEngine = VisionEngineFactory.create(appContext, visionSettings, aiSettings)
         private set
 
     fun saveVision(settings: VisionSettings): VisionEngine {
         settingsStore.saveVision(settings)
         visionSettings = settings
-        visionEngine = VisionEngineFactory.create(appContext, settings)
+        visionEngine = VisionEngineFactory.create(appContext, settings, aiSettings)
         return visionEngine
     }
 

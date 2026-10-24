@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -49,6 +51,19 @@ fun SegmentsScreen(state: UiState, viewModel: AppViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.padding(top = 4.dp))
+                Button(
+                    onClick = viewModel::gradeScannedSegments,
+                    enabled = !state.busy && state.segments.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (state.busy) {
+                        CircularProgressIndicator(Modifier.width(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(state.scanStage.ifBlank { "批改中…" })
+                    } else {
+                        Text("批改这次扫描（按纸面作答）")
+                    }
+                }
             }
         }
         items(state.segments, key = { it.exercise.id }) { segment ->
@@ -68,6 +83,9 @@ fun SegmentsScreen(state: UiState, viewModel: AppViewModel) {
                         Tag(exercise.sectionTitle.ifBlank { "未分组" })
                         Tag(pageLabel(exercise.pageIndexes, exercise.crossPage))
                         if (segment.isDuplicate) Tag("同一习题特判")
+                        state.scanGrades[exercise.id]?.let { grade ->
+                            Tag(if (grade.passed) "已批改 · ${grade.score} 分" else "已批改 · ${grade.score} 分（错）")
+                        }
                         Spacer(Modifier.weight(1f))
                         Text(
                             "${segment.knowledgePoints.size} 个知识点",

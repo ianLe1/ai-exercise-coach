@@ -33,6 +33,8 @@ import java.io.ByteArrayOutputStream
 class CloudVisionEngine(
     private val context: Context,
     private val settings: VisionSettings,
+    private val aiSettings: com.example.aiexercise.ai.AiSettings =
+        com.example.aiexercise.ai.AiSettings(),
     private val transport: HttpTransport = UrlConnectionHttpTransport(),
     private val timeoutMs: Int = 60_000,
 ) : VisionEngine {
@@ -42,7 +44,10 @@ class CloudVisionEngine(
     override val isOffline: Boolean = false
 
     override suspend fun recognize(uri: Uri): Outcome<VisionDocument> = withContext(Dispatchers.IO) {
-        if (settings.cloudApiKey.isBlank()) {
+        val endpointBase = settings.cloudEndpoint.trim().ifBlank { aiSettings.baseUrl }
+        val apiKey = settings.cloudApiKey.trim().ifBlank { aiSettings.apiKey }
+        val modelName = settings.cloudModel.trim().ifBlank { aiSettings.model.ifBlank { "gpt-4o-mini" } }
+        if (apiKey.isBlank()) {
             return@withContext Outcome.Failure(
                 AppError.AiNotConfigured("内置视觉未配置 API Key，请在「设置 → 视觉识别」填写多模态接口与 Key。"),
             )
@@ -50,7 +55,7 @@ class CloudVisionEngine(
         try {
             val (base64, mime) = readImage(uri)
             val body = buildJsonObject {
-                put("model", JsonPrimitive(settings.cloudModel.ifBlank { "gpt-4o-mini" }))
+                put("model", JsonPrimitive(modelName))
                 put("temperature", JsonPrimitive(0.1))
                 put("messages", buildJsonArray {
                     add(buildJsonObject {
@@ -71,12 +76,12 @@ class CloudVisionEngine(
                     })
                 })
             }.toString()
-            val endpoint = settings.cloudEndpoint.trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" } + "/chat/completions"
+            val endpoint = endpointBase.trimEnd('/').ifBlank { "https://api.openai.com/v1" } + "/chat/completions"
             val result = transport.postJson(
                 url = endpoint,
                 headers = mapOf(
                     "Content-Type" to "application/json",
-                    "Authorization" to "Bearer ${settings.cloudApiKey.trim()}",
+                    "Authorization" to "Bearer $apiKey",
                 ),
                 body = body,
                 timeoutMs = timeoutMs,
