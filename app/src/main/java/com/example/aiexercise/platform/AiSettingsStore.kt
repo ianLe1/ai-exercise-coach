@@ -20,14 +20,23 @@ class AiSettingsStore(context: Context) {
     /* ------------------------------ AI ------------------------------ */
 
     fun load(): AiSettings {
-        val mode = runCatching {
-            AiMode.valueOf(prefs.getString(KEY_MODE, AiMode.OFFLINE.name).orEmpty())
-        }.getOrDefault(AiMode.OFFLINE)
+        // 本地注入（local.properties → BuildConfig）：只在用户从未保存过设置时作为默认值
+        val presetKey = com.example.aiexercise.BuildConfig.DEFAULT_LLM_API_KEY.trim()
+        val presetBase = com.example.aiexercise.BuildConfig.DEFAULT_LLM_BASE_URL.trim()
+            .ifBlank { AiSettings.DEFAULT_BASE_URL }
+        val presetModel = com.example.aiexercise.BuildConfig.DEFAULT_LLM_MODEL.trim()
+            .ifBlank { AiSettings.DEFAULT_MODEL }
+        val savedMode = prefs.getString(KEY_MODE, null)
+        val mode = if (savedMode == null) {
+            if (presetKey.isNotBlank()) AiMode.REMOTE else AiMode.OFFLINE
+        } else {
+            runCatching { AiMode.valueOf(savedMode) }.getOrDefault(AiMode.OFFLINE)
+        }
         return AiSettings(
             mode = mode,
-            baseUrl = prefs.getString(KEY_BASE_URL, AiSettings.DEFAULT_BASE_URL).orEmpty(),
-            apiKey = prefs.getString(KEY_API_KEY, "").orEmpty(),
-            model = prefs.getString(KEY_MODEL, AiSettings.DEFAULT_MODEL).orEmpty(),
+            baseUrl = prefs.getString(KEY_BASE_URL, presetBase).orEmpty(),
+            apiKey = prefs.getString(KEY_API_KEY, presetKey).orEmpty(),
+            model = prefs.getString(KEY_MODEL, presetModel).orEmpty(),
         )
     }
 

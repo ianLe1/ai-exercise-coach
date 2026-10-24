@@ -98,13 +98,6 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Tag("当前 AI：${state.aiLabel}")
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "可在「设置」切换离线/云端引擎",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Tag("视觉：${state.visionLabel}")

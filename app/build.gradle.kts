@@ -1,3 +1,10 @@
+import java.util.Properties
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -18,6 +25,11 @@ android {
         versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 本地注入（local.properties 已在 .gitignore，Key 不进仓库）
+        buildConfigField("String", "DEFAULT_LLM_BASE_URL", "\"${localProperties.getProperty("llm.baseUrl", "https://discovery-api.intern-ai.org.cn/v1")}\"")
+        buildConfigField("String", "DEFAULT_LLM_MODEL", "\"${localProperties.getProperty("llm.model", "intern-s2")}\"")
+        buildConfigField("String", "DEFAULT_LLM_API_KEY", "\"${localProperties.getProperty("llm.apiKey", "")}\"")
     }
 
     buildTypes {
@@ -34,6 +46,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -11,10 +11,12 @@ import com.example.aiexercise.AiExerciseApp
 import com.example.aiexercise.ai.AiJson
 import com.example.aiexercise.ai.AiMode
 import com.example.aiexercise.ai.AiSettings
+import com.example.aiexercise.ai.AnswerReadRequest
 import com.example.aiexercise.ai.AnalyzeRequest
 import com.example.aiexercise.ai.KnowledgeSettings
 import com.example.aiexercise.ai.LocalAiService
 import com.example.aiexercise.ai.SearchHit
+import com.example.aiexercise.data.model.PaperQuestion
 import com.example.aiexercise.ai.SegmentDraft
 import com.example.aiexercise.ai.SegmentRequest
 import com.example.aiexercise.ai.SearchMode
@@ -79,6 +81,8 @@ data class UiState(
     val segments: List<ScanResult> = emptyList(),
     /** 本次扫描按纸面作答批改的结果：exerciseId → 批改结果。 */
     val scanGrades: MutableMap<String, GradeResult> = mutableMapOf(),
+    /** 本次多页扫描的逐页 OCR 文本（批改时用来重新抽取手写作答）。 */
+    val scanPageTexts: List<String> = emptyList(),
     val segmentsBusy: Boolean = false,
     val segmentStage: String = "",
 
@@ -406,6 +410,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             pageTexts.forEachIndexed { i, text -> android.util.Log.d("ScanFlow", "page ${i + 1} OCR:\n$text") }
+            _ui.update { it.copy(scanPageTexts = pageTexts) }
             if (pageTexts.all { it.isBlank() }) {
                 _ui.update {
                     it.copy(
@@ -625,16 +630,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _ui.update { it.copy(busy = true, scanStage = "准备批改…") }
             val toolkit = newToolkit()
             var data = current.data
+            var segments = current.segments
+            // 分割时没抽到作答的题：用答题卡识别从逐页 OCR 文本里再抽一次
+            if (segments.any { it.exercise.studentAnswer.isBlank() } && current.scanPageTexts.any { it.isNotBlank() }) {
+                _ui.update { it.copy(scanStage = "正在识别纸面作答…") }
+                val questions = segments.map { segment ->
+                    PaperQuestion(
+                        id = segment.exercise.id,
+                        questionMarkdown = segment.exercise.questionText,
+                        answerMarkdown = segment.exercise.referenceAnswer.ifBlank { "（无）" },
+                    )
+                }
+                when (
+                    val read = container.aiService.readAnswers(
+                        AnswerReadRequest(
+                            pagesText = current.scanPageTexts,
+                            paperQuestions = questions,
+                        ),
+                    )
+                ) {
+                    is Outcome.Success -> {
+                        val byIndex = read.value.answers.associateBy { it.index }
+                        val updated = segments.mapIndexed { i, segment ->
+                            val answer = byIndex[i + 1]?.answerText.orEmpty().trim()
+                            if (answer.isNotBlank()) {
+                                segment.copy(exercise = segment.exercise.copy(studentAnswer = answer))
+                            } else {
+                                segment
+                            }
+                        }
+                        val answerMap = updated.associateBy { it.exercise.id }
+                        data = data.copy(
+                            exercises = data.exercises.map { ex ->
+                                answerMap[ex.id]?.exercise ?: ex
+                            },
+                        )
+                        segments = updated
+                    }
+                    is Outcome.Failure -> Unit
+                }
+            }
             val graded = current.scanGrades.toMutableMap()
             val failures = mutableListOf<String>()
-            current.segments.forEachIndexed { index, segment ->
-                _ui.update { it.copy(scanStage = "正在批改第 ${index + 1}/${current.segments.size} 题…") }
+            segments.forEachIndexed { index, segment ->
+                _ui.update { it.copy(scanStage = "正在批改第 ${index + 1}/${segments.size} 题…") }
                 when (val result = toolkit.grade(data, segment.exercise.id)) {
                     is Outcome.Success -> {
                         data = result.value.data
                         graded[segment.exercise.id] = result.value.grade
                     }
-                    is Outcome.Failure -> failures += "第 ${index + 1} 题：${result.error.userMessage}"
+                    is Outcome.Failure -> failures += "第 ${index + 1} 题：没识别到作答（确认照片拍到了作答区域、字迹清晰）"
                 }
             }
             val saveError = persist(data)
@@ -644,6 +689,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     busy = false,
                     scanStage = "",
                     data = data,
+                    segments = segments,
                     scanGrades = graded,
                     message = UiMessage(
                         "批改完成：${graded.size}/${current.segments.size} 题有作答并被批改，对 $passed 题。" +
