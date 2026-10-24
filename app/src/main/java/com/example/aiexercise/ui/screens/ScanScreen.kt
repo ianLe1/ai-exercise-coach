@@ -60,16 +60,6 @@ import java.io.File
 fun ScanScreen(state: UiState, viewModel: AppViewModel) {
     val activity = LocalContext.current as? Activity
 
-    // 无 Google 文档扫描器时：相机拍一页 → 本地增强 → 追加为扫描页（可反复拍）
-    var pageCameraFile by remember { mutableStateOf<File?>(null) }
-    val pageCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        pageCameraFile?.let { file ->
-            if (success) {
-                viewModel.onGalleryPickedMultiple(listOf(android.net.Uri.fromFile(file)))
-                viewModel.notify("已拍照加入扫描页（可继续拍下一页）", false)
-            }
-        }
-    }
     val galleryMultiLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MAX_SCAN_PAGES),
     ) { uris -> viewModel.onGalleryPickedMultiple(uris) }
@@ -130,14 +120,8 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
                                     )
                                 }
                             } else {
-                                // 华为等无 Google Play 服务的设备：内置拍照扫描（一页一张，可连拍）+ 本地增强
-                                val (file, uri) = viewModel.createCameraOutput()
-                                pageCameraFile = file
-                                pageCameraLauncher.launch(uri)
-                                viewModel.notify(
-                                    "此设备没有 Google 文档扫描器，已启用内置拍照扫描：拍一页加一页，可连续拍。",
-                                    false,
-                                )
+                                // 华为等无 Google 服务：进入内置扫描界面（取景 → 连拍 → 四角矫正 → 多页）
+                                viewModel.navigate(AppScreen.InAppScan)
                             }
                         },
                         enabled = !state.segmentsBusy && !state.busy,

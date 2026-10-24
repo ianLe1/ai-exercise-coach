@@ -65,6 +65,10 @@ dependencies {
     implementation(libs.mlkit.text.recognition.chinese)
     // 多页文档扫描（自动透视矫正 + 增强 + 多页），无 Play 服务时由本地增强回退
     implementation(libs.mlkit.document.scanner)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
     // 数据持久化 / AI JSON 契约
     implementation(libs.kotlinx.serialization.json)
 

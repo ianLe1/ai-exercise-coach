@@ -54,7 +54,7 @@ import java.io.File
 import java.util.UUID
 
 /** 页面路由（单 Activity + 自研简单导航，避免额外依赖）。 */
-enum class AppScreen { Home, Scan, Result, Segments, Paper, PracticeReview, Settings }
+enum class AppScreen { Home, Scan, InAppScan, Result, Segments, Paper, PracticeReview, Settings }
 
 data class UiMessage(val text: String, val isError: Boolean = false, val id: Long = System.nanoTime())
 
@@ -365,6 +365,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 message = UiMessage("已添加 ${newPages.size} 页，共 ${state.scanPages.size + newPages.size} 页，可点「识别并分割题目」"),
             )
         }
+    }
+
+    /** 内置扫描界面完成：把已矫正的页加入扫描页并回到扫描页。 */
+    fun onInAppScanCompleted(paths: List<String>) {
+        if (paths.isNotEmpty()) appendPages(paths, ExerciseSource.OCR_GALLERY)
+        navigate(AppScreen.Scan)
     }
 
     fun removeScanPage(pageId: String) {

@@ -27,7 +27,7 @@ app/src/main/java/com/example/aiexercise/
 ├── platform/   # Android 实现：视觉引擎、图像存储、SharedPreferences、依赖容器
 └── ui/         # ViewModel + Compose 界面（扫描/结果/知识点/练习卷/设置）
 tools/modlens-bridge/   # 把本机 modlens CLI 包成 HTTP /analyze 的 Node 桥
-screenshots/            # 模拟器端到端验收截图（01–47）
+screenshots/            # 模拟器端到端验收截图（01–51）
 ```
 
 ## 构建与测试
@@ -58,7 +58,7 @@ screenshots/            # 模拟器端到端验收截图（01–47）
 9. **视觉默认内置多模态**：`VisionSettings.mode` 默认 `CLOUD`，复用「设置 → 大模型」的 Base URL/Key/模型调用 OpenAI 兼容多模态接口（Markdown + LaTeX 结构化输出）；无 Key 或失败时自动回退 ML Kit。modlens 桥降级为可选项。
 10. **整卷生成 + 结构化强规范 + 批改统一**：首页「生成一整张试卷」走 `AppViewModel.generatePaperFull()`（默认 20 题、`dueOnly=false`）；`domain/PaperStructure.kt` 强制三大题归类、每题分值>0、全卷合计 100、选择题≥2 选项，不合规会被拒绝（远程失败用离线模板兜底）；练习卷页不再有单独的答题卡批改入口，批改一律走「扫描习题 → 分割 → 批改这次扫描」。题面用 `ui/components/MarkdownText.kt` 渲染（轻量 Markdown，不引第三方）。整卷题池不只用错题：`ExerciseToolkit.generatePaper` 取 3 个紧迫知识点为主、2 个掌握度最高的为穿插、其余约 20% 由 AI 补新知识点（`PaperRequest.reviewPoints/newPointCount`）；大模型预设见 `ai/LlmPresets.kt`（当前只保留 Intern AI：`https://discovery-api.intern-ai.org.cn/v1` / `intern-s2`；只填 Base URL/模型名，Key 由用户申请，仓库绝不写 Key）。`OpenAiCompatibleAiService` 对 intern-ai 端点使用 `InternChatRequestBody`（`chat_template_kwargs.enable_thinking=false` + `max_tokens=4096`），并兼容只在 `reasoning_content` 返回正文的模型。视觉模式为 CLOUD 但没有 Key 时，`VisionEngineFactory` 直接返回 ML Kit，避免扫描时反复报「没有 API Key」；`testAi()` 在 REMOTE+空 Key 时给明确提示。本地注入：`app/build.gradle.kts` 从 `local.properties` 的 `llm.baseUrl/llm.model/llm.apiKey` 读入 `BuildConfig.DEFAULT_LLM_*`（该文件已 gitignore，仓库绝不含 Key），`AiSettingsStore.load()` 在用户从未保存设置时用它作为默认（有预置 Key 则默认 REMOTE）。扫描批改前若题目作答为空，`gradeScannedSegments()` 会先用 `readAnswers` 从 `scanPageTexts` 再抽一次。
 11. **界面极简**：首页（`ui/screens/HomeScreen.kt`）只允许「按复习时间排序的知识点列表 + 扫描按钮」；练习卷/批改入口在扫描页底部；设置页只保留「大模型 + 用户信息」两块。参考答案不由用户填写，缺省时走 `AiService.solve` 自动生成。
-   扫描器必须在无 Google 服务（华为）设备上可用：`DocumentScanEngine.isAvailable` 为 false 时按钮退化为内置拍照扫描（相机逐页 + `ImageEnhancer` 增强后追加 `scanPages`）；答题卡批改只保留多页入口（相册多选 / 相机逐页）。
+   扫描器必须在无 Google 服务（华为）设备上可用：`DocumentScanEngine.isAvailable` 为 false 时按钮进入 `AppScreen.InAppScan`（`ui/screens/InAppScanScreen.kt`：CameraX 取景 → 连拍 → 拖四角透视矫正 → 增强 → `onInAppScanCompleted` 追加 `scanPages`），这是「模仿系统扫描界面」而非拍一张就 OCR；答题卡批改只保留多页入口（相册多选 / 相机逐页）。
 
 12. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
 

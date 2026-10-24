@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiexercise.ui.screens.HomeScreen
+import com.example.aiexercise.ui.screens.InAppScanScreen
 import com.example.aiexercise.ui.screens.PaperScreen
 import com.example.aiexercise.ui.screens.PracticeReviewScreen
 import com.example.aiexercise.ui.screens.ResultScreen
@@ -68,6 +69,10 @@ fun AiExerciseRoot(viewModel: AppViewModel = viewModel()) {
             when (state.screen) {
                 AppScreen.Home -> HomeScreen(state, viewModel)
                 AppScreen.Scan -> ScanScreen(state, viewModel)
+                AppScreen.InAppScan -> InAppScanScreen(
+                    onCancel = { viewModel.navigate(AppScreen.Scan) },
+                    onDone = viewModel::onInAppScanCompleted,
+                )
                 AppScreen.Result -> ResultScreen(state, viewModel)
                 AppScreen.Segments -> SegmentsScreen(state, viewModel)
                 AppScreen.Paper -> PaperScreen(state, viewModel)
