@@ -1169,6 +1169,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun testAi() {
         if (_ui.value.busy) return
+        val current = container.aiSettings
+        if (current.mode == AiMode.REMOTE && current.apiKey.isBlank()) {
+            setMessage("请先填写 API Key：预设只自动填 Base URL 与模型名，Key 需要到对应服务官网申请。", true)
+            return
+        }
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
             val request = AnalyzeRequest(

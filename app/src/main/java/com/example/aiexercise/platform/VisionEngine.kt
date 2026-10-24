@@ -81,10 +81,17 @@ class MlKitVisionEngine(private val context: Context) : VisionEngine {
 
 /** 视觉引擎工厂：按设置装配。 */
 object VisionEngineFactory {
-    fun create(context: Context, settings: VisionSettings, aiSettings: com.example.aiexercise.ai.AiSettings): VisionEngine =
-        when (settings.mode) {
+    fun create(context: Context, settings: VisionSettings, aiSettings: com.example.aiexercise.ai.AiSettings): VisionEngine {
+        val hasCloudKey = settings.cloudApiKey.trim().ifBlank { aiSettings.apiKey }.isNotBlank()
+        return when (settings.mode) {
             VisionMode.MLKIT -> MlKitVisionEngine(context)
             VisionMode.MODLENS -> ModlensVisionEngine(context, settings.modlensUrl)
-            VisionMode.CLOUD -> CloudVisionEngine(context, settings, aiSettings)
+            // 选了内置多模态但还没填 Key：直接用离线 OCR，避免每次扫描都弹「没有 API Key」
+            VisionMode.CLOUD -> if (hasCloudKey) {
+                CloudVisionEngine(context, settings, aiSettings)
+            } else {
+                MlKitVisionEngine(context)
+            }
         }
+    }
 }
