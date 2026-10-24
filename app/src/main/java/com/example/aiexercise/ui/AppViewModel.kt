@@ -1,6 +1,9 @@
 package com.example.aiexercise.ui
 
+import android.app.Activity
 import android.app.Application
+import android.content.Intent
+import android.content.IntentSender
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,7 +12,10 @@ import com.example.aiexercise.ai.AiJson
 import com.example.aiexercise.ai.AiMode
 import com.example.aiexercise.ai.AiSettings
 import com.example.aiexercise.ai.AnalyzeRequest
+import com.example.aiexercise.ai.LocalAiService
 import com.example.aiexercise.ai.SearchHit
+import com.example.aiexercise.ai.SegmentDraft
+import com.example.aiexercise.ai.SegmentRequest
 import com.example.aiexercise.ai.SearchMode
 import com.example.aiexercise.ai.SearchSettings
 import com.example.aiexercise.ai.VisionMode
@@ -20,6 +26,8 @@ import com.example.aiexercise.data.model.ExerciseSource
 import com.example.aiexercise.data.model.GradeResult
 import com.example.aiexercise.data.model.PracticePaper
 import com.example.aiexercise.data.model.ResearchBundle
+import com.example.aiexercise.data.model.ScanPage
+import com.example.aiexercise.data.model.ScanPaper
 import com.example.aiexercise.domain.AppError
 import com.example.aiexercise.domain.ExerciseToolkit
 import com.example.aiexercise.domain.ResearchAssistant
@@ -33,9 +41,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.UUID
 
 /** 页面路由（单 Activity + 自研简单导航，避免额外依赖）。 */
-enum class AppScreen { Scan, Result, Knowledge, Paper, Settings }
+enum class AppScreen { Scan, Result, Segments, Knowledge, Paper, Settings }
 
 data class UiMessage(val text: String, val isError: Boolean = false, val id: Long = System.nanoTime())
 
@@ -54,6 +63,13 @@ data class UiState(
     val imagePath: String? = null,
     val imageSource: ExerciseSource? = null,
 
+    // 多页扫描（矫正增强 → 分割题目 → 每题独立成习题）
+    val scanPages: List<ScanPage> = emptyList(),
+    val scanPaperId: String = "",
+    val segments: List<ScanResult> = emptyList(),
+    val segmentsBusy: Boolean = false,
+    val segmentStage: String = "",
+
     // 最近一次识别 / 批改结果
     val lastScan: ScanResult? = null,
     val lastGrade: GradeResult? = null,
@@ -69,6 +85,8 @@ data class UiState(
     val lastPaper: PracticePaper? = null,
     val lastPaperJson: String? = null,
     val showPaperJson: Boolean = false,
+    /** 练习卷 JSON 是否展示“完整版（含题面/答案）”，默认展示答题卡结构规范。 */
+    val showFullPaperJson: Boolean = false,
 
     // AI 设置
     val aiMode: AiMode = AiMode.OFFLINE,
@@ -229,6 +247,275 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /* ------------------- 多页扫描（矫正增强 + 题目分割） ------------------- */
+
+    /** 「文档扫描」入口：拿到系统扫描器的 IntentSender 后由 UI 启动（自动透视矫正+增强+多页）。 */
+    fun startDocumentScan(activity: Activity, onIntent: (IntentSender) -> Unit) {
+        viewModelScope.launch {
+            when (val result = container.documentScanEngine.startIntent(activity)) {
+                is Outcome.Success -> onIntent(result.value)
+                is Outcome.Failure -> setMessage(result.error.userMessage, true)
+            }
+        }
+    }
+
+    /** 文档扫描器返回：页图已被矫正增强，直接转存进 App 目录。 */
+    fun onDocumentScanResult(data: Intent?) {
+        when (val parsed = container.documentScanEngine.parseResult(data)) {
+            is Outcome.Failure -> setMessage(parsed.error.userMessage, true)
+            is Outcome.Success -> viewModelScope.launch {
+                val paths = mutableListOf<String>()
+                for (uri in parsed.value) {
+                    when (val saved = container.imageEnhancer.saveScannedPage(uri)) {
+                        is Outcome.Success -> paths += saved.value
+                        is Outcome.Failure -> setMessage(saved.error.userMessage, true)
+                    }
+                }
+                appendPages(paths, ExerciseSource.OCR_CAMERA)
+            }
+        }
+    }
+
+    /** 相册多选：本地按 EXIF 摆正 + 增强后加入扫描页。 */
+    fun onGalleryPickedMultiple(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            _ui.update { it.copy(ocrBusy = true) }
+            val paths = mutableListOf<String>()
+            for (uri in uris) {
+                when (val enhanced = container.imageEnhancer.enhance(uri)) {
+                    is Outcome.Success -> paths += enhanced.value
+                    is Outcome.Failure -> setMessage(enhanced.error.userMessage, true)
+                }
+            }
+            _ui.update { it.copy(ocrBusy = false) }
+            appendPages(paths, ExerciseSource.OCR_GALLERY)
+        }
+    }
+
+    private fun appendPages(paths: List<String>, source: ExerciseSource) {
+        if (paths.isEmpty()) return
+        _ui.update { state ->
+            val startIndex = state.scanPages.size
+            val newPages = paths.mapIndexed { offset, path ->
+                ScanPage(
+                    id = UUID.randomUUID().toString(),
+                    index = startIndex + offset + 1,
+                    imagePath = path,
+                    corrected = true,
+                )
+            }
+            state.copy(
+                scanPages = state.scanPages + newPages,
+                scanPaperId = state.scanPaperId.ifBlank { UUID.randomUUID().toString() },
+                imagePath = newPages.last().imagePath,
+                imageSource = source,
+                message = UiMessage("已添加 ${newPages.size} 页，共 ${state.scanPages.size + newPages.size} 页，可点「识别并分割题目」"),
+            )
+        }
+    }
+
+    fun removeScanPage(pageId: String) {
+        _ui.update { state ->
+            val remaining = state.scanPages
+                .filterNot { it.id == pageId }
+                .mapIndexed { i, page -> page.copy(index = i + 1) }
+            state.copy(
+                scanPages = remaining,
+                message = if (remaining.isEmpty()) UiMessage("已清空扫描页") else null,
+            )
+        }
+    }
+
+    fun clearScanPages() = _ui.update {
+        it.copy(scanPages = emptyList(), scanPaperId = "", segments = emptyList())
+    }
+
+    /**
+     * 多页 → 逐页 OCR → AI 分割题目（跨页题合并为一条）→ 每道题独立走完整流水线，
+     * 即每道题都会单独生成/维护自己的「不会的知识点」与遗忘曲线计时器。
+     */
+    fun ocrAndSegment() {
+        val current = _ui.value
+        if (current.segmentsBusy || current.busy) return
+        if (current.scanPages.isEmpty()) {
+            setMessage("请先添加扫描页：文档扫描或相册多选。", true)
+            return
+        }
+        viewModelScope.launch {
+            _ui.update { it.copy(segmentsBusy = true, segmentStage = "开始识别…") }
+            val pages = current.scanPages
+            val pageTexts = mutableListOf<String>()
+            val warnings = mutableListOf<String>()
+            for ((index, page) in pages.withIndex()) {
+                _ui.update { it.copy(segmentStage = "正在识别第 ${index + 1}/${pages.size} 页…") }
+                when (val recognized = recognizeText(File(page.imagePath))) {
+                    is Outcome.Success -> pageTexts += recognized.value
+                    is Outcome.Failure -> {
+                        pageTexts += ""
+                        warnings += "第 ${index + 1} 页识别失败：${recognized.error.userMessage}"
+                    }
+                }
+            }
+            pageTexts.forEachIndexed { i, text -> android.util.Log.d("ScanFlow", "page ${i + 1} OCR:\n$text") }
+            if (pageTexts.all { it.isBlank() }) {
+                _ui.update {
+                    it.copy(
+                        segmentsBusy = false,
+                        segmentStage = "",
+                        message = UiMessage(
+                            warnings.firstOrNull() ?: "没有识别到文字，请重拍或改用相册/手动输入。",
+                            true,
+                        ),
+                    )
+                }
+                return@launch
+            }
+
+            _ui.update { it.copy(segmentStage = "正在分割题目（自动合并跨页题）…") }
+            val request = SegmentRequest(
+                pagesText = pageTexts.mapIndexed { i, text -> "=== 第 ${i + 1} 页 ===\n$text" }
+                    .joinToString("\n\n"),
+                pages = pageTexts,
+                pageCount = pageTexts.size,
+                subjectHint = current.data.asker.gradeLevel,
+                asker = current.data.asker,
+            )
+            var note = ""
+            val drafts = when (val segmented = container.aiService.segmentQuestions(request)) {
+                is Outcome.Success -> segmented.value.questions
+                is Outcome.Failure -> {
+                    note = "AI 分割不可用，已用离线规则分割（${segmented.error.userMessage}）"
+                    when (val offline = LocalAiService().segmentQuestions(request)) {
+                        is Outcome.Success -> offline.value.questions
+                        is Outcome.Failure -> emptyList()
+                    }
+                }
+            }
+            if (drafts.isEmpty()) {
+                _ui.update {
+                    it.copy(
+                        segmentsBusy = false,
+                        segmentStage = "",
+                        message = UiMessage(
+                            "没有从扫描页里分割出题目，请确认图片清晰、题目带题号（如“1.”“第1题”）。",
+                            true,
+                        ),
+                    )
+                }
+                return@launch
+            }
+
+            val toolkit = newToolkit()
+            val paperId = current.scanPaperId.ifBlank { UUID.randomUUID().toString() }
+            var data = current.data
+            val results = mutableListOf<ScanResult>()
+            for ((index, draft) in drafts.withIndex()) {
+                _ui.update { it.copy(segmentStage = "正在分析第 ${index + 1}/${drafts.size} 题的知识点…") }
+                val pageFrom = draft.pageFrom.coerceIn(1, pages.size)
+                val pageTo = draft.pageTo.coerceIn(pageFrom, pages.size)
+                val input = ScanInput(
+                    rawText = draft.questionText,
+                    referenceAnswer = draft.referenceAnswer,
+                    studentAnswer = draft.studentAnswer,
+                    source = ExerciseSource.OCR_GALLERY,
+                    imagePath = pages[pageFrom - 1].imagePath,
+                    subjectHint = request.subjectHint,
+                    sectionTitle = draft.sectionTitle,
+                    pageIndexes = (pageFrom..pageTo).toList(),
+                    crossPage = pageTo > pageFrom,
+                    scanPaperId = paperId,
+                )
+                when (val scanned = toolkit.scan(data, input)) {
+                    is Outcome.Success -> {
+                        results += scanned.value
+                        data = scanned.value.data
+                        scanned.value.warning?.let { warnings += "第 ${index + 1} 题：${it.userMessage}" }
+                    }
+                    is Outcome.Failure -> warnings += "第 ${index + 1} 题分析失败：${scanned.error.userMessage}"
+                }
+            }
+            if (results.isEmpty()) {
+                _ui.update {
+                    it.copy(
+                        segmentsBusy = false,
+                        segmentStage = "",
+                        message = UiMessage(warnings.firstOrNull() ?: "题目分割成功，但逐题分析都失败了。", true),
+                    )
+                }
+                return@launch
+            }
+            val crossPageCount = drafts.count { it.pageTo > it.pageFrom }
+            val batch = ScanPaper(
+                id = paperId,
+                createdAt = System.currentTimeMillis(),
+                pages = pages,
+                exerciseIds = results.map { it.exercise.id },
+                warnings = warnings,
+            )
+            data = data.copy(scanPapers = (data.scanPapers + batch).takeLast(MAX_STORED_SCAN_PAPERS))
+            val saveError = persist(data)
+            val message = buildString {
+                append("已把 ${results.size} 道题分别建为习题")
+                if (crossPageCount > 0) append("（其中 $crossPageCount 道跨页题已合并）")
+                if (note.isNotBlank()) append("；$note")
+                if (warnings.isNotEmpty()) append("；${warnings.size} 条提示")
+                saveError?.let { append("；但保存失败：${it.userMessage}") }
+            }
+            _ui.update {
+                it.copy(
+                    segmentsBusy = false,
+                    segmentStage = "",
+                    data = data,
+                    segments = results,
+                    scanPaperId = paperId,
+                    screen = AppScreen.Segments,
+                    message = UiMessage(message, saveError != null),
+                )
+            }
+        }
+    }
+
+    fun openSegment(segment: ScanResult) {
+        val current = _ui.value
+        _ui.update {
+            it.copy(
+                screen = AppScreen.Result,
+                lastScan = segment,
+                lastGrade = current.data.grades.lastOrNull { grade -> grade.exerciseId == segment.exercise.id },
+            )
+        }
+    }
+
+    fun openSegments() = _ui.update { it.copy(screen = AppScreen.Segments) }
+
+    /** 从结果页返回：多页分割流程回到题目列表，単题流程回扫描页。 */
+    fun backFromResult() = _ui.update {
+        if (it.segments.isNotEmpty()) it.copy(screen = AppScreen.Segments) else it.copy(screen = AppScreen.Scan)
+    }
+
+    private fun newToolkit(): ExerciseToolkit = ExerciseToolkit(
+        ai = container.aiService,
+        research = ResearchAssistant(
+            search = container.searchService,
+            knowledgeBase = container.knowledgeBase,
+            ai = container.aiService,
+        ),
+    )
+
+    private suspend fun recognizeText(file: File): Outcome<String> {
+        val uri = Uri.fromFile(file)
+        val primary = container.visionEngine.recognize(uri)
+        if (primary is Outcome.Failure &&
+            container.visionSettings.mode == VisionMode.MODLENS &&
+            container.visionSettings.fallbackToMlKit
+        ) {
+            val fallback = container.mlKitVisionEngine.recognize(uri)
+            if (fallback is Outcome.Success) return fallback
+        }
+        return primary
+    }
+
     private suspend fun recognize(file: File, source: ExerciseSource) {
         val uri = Uri.fromFile(file)
         val primary = container.visionEngine.recognize(uri)
@@ -282,25 +569,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             setMessage("题目内容太短（至少 $MIN_QUESTION_LENGTH 个字符），请先扫描或手动输入题目。", true)
             return
         }
-        viewModelScope.launch {
-            _ui.update { it.copy(busy = true) }
-            val input = ScanInput(
+        performScan(
+            ScanInput(
                 rawText = text,
                 referenceAnswer = current.referenceAnswer,
                 studentAnswer = current.studentAnswer,
                 source = current.imageSource ?: ExerciseSource.MANUAL,
                 imagePath = current.imagePath,
-            )
-            val toolkit = ExerciseToolkit(
-                ai = container.aiService,
-                research = ResearchAssistant(
-                    search = container.searchService,
-                    knowledgeBase = container.knowledgeBase,
-                    ai = container.aiService,
-                ),
-            )
+            ),
+        )
+    }
+
+    /** 结果页「重新扫描此题」：用该题已有的文本/页码/批次再走一遍（用于验证同一习题特判）。 */
+    fun rescanLastExercise() {
+        val current = _ui.value
+        if (current.busy) return
+        val exercise = current.lastScan?.exercise
+        if (exercise == null) {
+            setMessage("还没有识别结果，请先扫描习题。", true)
+            return
+        }
+        performScan(
+            ScanInput(
+                rawText = exercise.questionText,
+                referenceAnswer = exercise.referenceAnswer,
+                studentAnswer = exercise.studentAnswer,
+                source = exercise.source,
+                imagePath = exercise.imagePath,
+                sectionTitle = exercise.sectionTitle,
+                pageIndexes = exercise.pageIndexes,
+                crossPage = exercise.crossPage,
+                scanPaperId = exercise.scanPaperId,
+            ),
+        )
+    }
+
+    private fun performScan(input: ScanInput) {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true, scanStage = "准备分析…") }
+            val data = _ui.value.data
+            val toolkit = newToolkit()
             val onStage: (String) -> Unit = { stage -> _ui.update { it.copy(scanStage = stage) } }
-            when (val result = toolkit.scan(current.data, input, onStage)) {
+            when (val result = toolkit.scan(data, input, onStage)) {
                 is Outcome.Success -> {
                     val value = result.value
                     val saveError = persist(value.data)
@@ -428,6 +738,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleDueOnly() = _ui.update { it.copy(dueOnly = !it.dueOnly) }
 
     fun toggleShowPaperJson() = _ui.update { it.copy(showPaperJson = !it.showPaperJson) }
+
+    /** 切换“完整练习卷 JSON（含 Markdown 题面/答案）”的展示。 */
+    fun toggleShowFullPaperJson() = _ui.update { it.copy(showFullPaperJson = !it.showFullPaperJson) }
 
     fun generatePaper(aspect: String = _ui.value.paperAspect) {
         val current = _ui.value
@@ -680,3 +993,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             "配方得 f(x)=(x-2)²-1，所以最小值是 -1，最大值是 f(3)=0。"
     }
 }
+
+/** 最多保留多少批多页扫描记录。 */
+private const val MAX_STORED_SCAN_PAPERS = 10

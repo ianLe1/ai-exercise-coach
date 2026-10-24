@@ -9,10 +9,11 @@
 
 - 技术栈：Kotlin + Jetpack Compose（Material 3）+ kotlinx.serialization + Coroutines；AI 默认离线规则引擎，可一键切换 OpenAI 兼容接口。
 - 视觉扫描：默认 Google ML Kit 中文文字识别（端侧离线）；可切换 **modlens 视觉桥**（多模态模型读题，经 `tools/modlens-bridge` 本机 HTTP 桥接入，失败自动回退 ML Kit）。
+- 多页扫描：ML Kit 文档扫描器一次拍多页（自动透视矫正 + 增强），或相册多选后本地按 EXIF 摆正并提升对比度；OCR 后把题目**一道一道切出来**，跨页题自动合并，**每道题独立成为一条习题**（各自维护不会的知识点与遗忘曲线计时器）。
 - 联网搜索：识别结果页可用 **必应 Web Search API v7** 搜索本题讲解 / 同类题（Azure Key 配置后启用，不配置则该入口隐藏）。
 - **AI 分类前的自动资料检索（固定流水线）**：每次 AI 生成/更新「不会的知识点」之前，先用题目正文联网搜索本题解析 → 交给 AI 过滤出真正匹配的解析 →（可选）检索教材/教师用书知识库 → 一起作为分类上下文；任何一步失败都降级为可读提示，不阻断知识点维护。知识库当前保留接口与空实现（教材数据待接入）。
 - 数据：单文件 JSON（应用私有目录 `files/data/app_data.json`），原子写；API Key 只存 SharedPreferences。
-- 验收：61 个 JVM 单元测试全部通过；`assembleDebug` 产出 APK；模拟器上完整跑通一遍流程（截图见 `screenshots/`）。
+- 验收：81 个 JVM 单元测试全部通过；`assembleDebug` 产出 APK；模拟器上完整跑通一遍流程（截图见 `screenshots/`）。
 
 ## 快速开始
 
@@ -34,6 +35,7 @@ APK：`app/build/outputs/apk/debug/app-debug.apk`，安装后打开即为「扫�
 app/src/main/java/com/example/aiexercise/
 ├── data/
 │   ├── model/Models.kt          # 全部可序列化数据模型（AppData/Exercise/KnowledgePoint/ReviewTimer/...）
+│   ├── model/ScanModels.kt      # 多页扫描：ScanPage / ScanPaper（批次、页码、警告）
 │   ├── model/ResearchModels.kt  # 自动资料检索模型（WebHit/SolutionDigest/KbCitation/ResearchBundle）
 │   ├── store/AppDataStore.kt    # AppJson + JsonFileStore（原子写）+ InMemoryStore
 │   └── AppRepository.kt         # 唯一读写磁盘的仓库层，返回 Outcome
@@ -43,6 +45,8 @@ app/src/main/java/com/example/aiexercise/
 │   ├── ForgettingCurve.kt       # 简化 SM-2 + 指数遗忘模型（可替换）
 │   ├── ExerciseIdentity.kt      # 同一习题判定：规范化 + SHA-256 + bigram Jaccard
 │   ├── KnowledgePointRules.kt   # 去重键、相似兜底、计时器刷新、方面匹配、合并
+│   ├── QuestionSegmenter.kt     # 多页 OCR 文本 → 一道道题（大题归属、跨页合并、页眉噪声过滤）
+│   ├── AnswerSheet.kt           # 练习卷「答题卡结构」：编解码/校验/从题目推导（JSON 规范）
 │   ├── ExerciseWorkflow.kt      # ExerciseToolkit：scan / grade / recordReview / generatePaper
 │   ├── ResearchAssistant.kt     # 固定流水线：网络搜索 → AI 过滤本题解析 → 知识库检索
 │   ├── KnowledgeBase.kt         # 教材/教师用书知识库接口 + EmptyKnowledgeBase（待接入）
@@ -59,6 +63,8 @@ app/src/main/java/com/example/aiexercise/
 ├── platform/                    # Android 相关实现
 │   ├── VisionEngine.kt          # 视觉抽象 + ML Kit 实现 + 工厂（可替换点）
 │   ├── ModlensVisionEngine.kt   # modlens 视觉桥（HTTP 调本机 modlens CLI 包装）
+│   ├── DocumentScanEngine.kt    # ML Kit 文档扫描器（多页、自动透视矫正+增强）
+│   ├── ImageEnhancer.kt         # 相册图的 EXIF 摆正 + 对比度增强 + 转存
 │   ├── ImageStore.kt            # 拍照文件 / 相册复制 / FileProvider
 │   ├── AiSettingsStore.kt       # SharedPreferences
 │   └── AppContainer.kt          # 手写依赖注入容器
@@ -66,7 +72,7 @@ app/src/main/java/com/example/aiexercise/
 │   ├── AppViewModel.kt          # 状态 + 全部用户动作
 │   ├── AppRoot.kt               # Scaffold + 4 个底部 tab
 │   ├── components/Common.kt     # 卡片、掌握度条、知识点卡等
-│   └── screens/                 # Scan / Result / Knowledge / Paper / Settings
+│   └── screens/                 # Scan / Result / Segments / Knowledge / Paper / Settings
 ├── AiExerciseApp.kt             # Application，持有 AppContainer
 └── MainActivity.kt
 
@@ -82,7 +88,11 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
   - `MlKitVisionEngine`（默认）：Google ML Kit 中文文字识别（`com.google.mlkit:text-recognition-chinese`，模型随 APK 打包，**离线**，不上传图片）；
   - `ModlensVisionEngine`：把图片 base64 后 POST 给本机运行的 `tools/modlens-bridge`，由 modlens（多模态模型）读题并返回文字（设置页可切换，失败自动回退 ML Kit）。
 - **流程**：图片 → 视觉引擎 → 文本回填可编辑输入框 → 用户补齐“参考答案/我的作答” → 点「AI 分析知识点」。识别结果过短（<4 字）视为失败，提示“可能是图片模糊或没有文字”，并保留手动输入通道。
-- **可替换点**：换云端 OCR / 其他多模态服务，只需实现 `VisionEngine` 接口；UI 与业务层不用改。
+- **多页扫描与题目分割**（`domain/QuestionSegmenter.kt` + `platform/DocumentScanEngine.kt` + `platform/ImageEnhancer.kt`）：
+  - 入口：扫描页「文档扫描」（`GmsDocumentScanning`，多页、自动透视矫正与增强；设备无 Google Play 服务时可读提示并回退）或「相册多选」（本地按 EXIF 摆正、长边压到 2200px、对比度 1.25 增强）；页缩略图可删除。
+  - 逐页 OCR → `AiService.segmentQuestions`（离线引擎走 `QuestionSegmenter` 兜底）：识别大题标题（“一、解答题”）与题号（“1.”“第2题”），小题不切分；**跨页题**把下一页续接内容并进同一题并记 `pageFrom/pageTo`；页眉/页码噪声被过滤。
+  - 分割出的每道题逐个调 `ExerciseToolkit.scan`，成为独立 `Exercise`（带 `sectionTitle/pageIndexes/crossPage/scanPaperId`）；结果列表页 `SegmentsScreen` 展示大题、页码（如“第 1–2 页 · 跨页”）与知识点数，点击进入该题自己的结果页。
+- **可替换点**：换云端 OCR / 其他多模态服务，只需实现 `VisionEngine` 接口；换文档扫描方案只替换 `DocumentScanEngine`；分割规则在 `QuestionSegmenter`。
 
 ### 2. 知识点生成与维护
 
@@ -126,8 +136,11 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - 入口：结果页「按遗忘曲线为最紧迫的知识点出练习卷」或「练习卷」tab 输入/点选方面（aspect）与题量。
 - 选题：`ExerciseToolkit.generatePaper` 先用 `KnowledgePointRules.matchesAspect` 过滤方面（空方面 = 全部），按 `ForgettingCurve.urgency` 降序取前 `maxKnowledgePointsPerPaper` 个；可选“只从已到期待复习知识点选题”；没有对应知识点时返回 `AppError.NoKnowledgePointForAspect(方面, 可用方面列表)`，UI 给出可读提示并展示可选方面。
 - 生成：把选中的知识点 + 提问者画像交给 `AiService.generatePaper`，返回 `PaperPayload`（标题/方面/摘要/题目）。
-- **输出**：`PracticePaper` 序列化为 JSON（`Paper.schema = "ai-exercise-paper/v1"`，含 `knowledgePoints`、`questions`，每题 `questionMarkdown/answerMarkdown/explanationMarkdown` 为 Markdown），练习卷页可直接「查看 JSON / 复制 JSON」。落盘保留最近 20 份。
-- 生成结果为空/题面缺失会被 `AiPayloadValidator` 过滤；空卷返回 `AppError.GenerationInvalid`，不会生成非法 JSON。
+- **输出（两种 JSON）**：
+  1. **答题卡结构 JSON**（默认展示/复制，即用户给定的规范）：`{ "第一大题": { "第1题": 5, "第2题": { "第2题第1小题": ["选项A","选项B","选项C"], "第2题第2小题": "填空题___" } } }` —— 数字 = 答题区行数；数组 = 选择题选项；字符串（含 `___`）= 填空题模板；对象 = 小题（最多一层，可无）。必须有大题与题；`domain/AnswerSheet.kt` 的 `AnswerSheetCodec` 负责编码、解析与校验（行数 1–30、选项 2–8 个等），AI 返回的结构不合法时用 `derive()` 从题目确定性推导，保证始终合法。
+  2. **完整练习卷 JSON**（「完整 JSON（含题面）」切换查看）：`PracticePaper` 序列化，含 `knowledgePoints` 与每题 `questionMarkdown/answerMarkdown/explanationMarkdown`（Markdown），用于归档与调试。
+  - 两者都会落盘（`PracticePaper.answerSheetJson` + 题目数据），保留最近 20 份。
+- 生成结果为空/题面缺失会被 `AiPayloadValidator` 过滤；空卷或答题卡结构无法解析返回 `AppError.GenerationInvalid`，不会输出非法 JSON。
 
 ## AI 分类前的自动资料检索（固定流水线）
 
@@ -186,6 +199,9 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 | 网络搜索失败/未配置 | `ResearchBundle.webState=failed/skipped` + warning | 检索卡显示可读原因，分类继续执行 |
 | AI 过滤后无匹配解析 | `webState=no_match` | 提示“网络结果与本题不匹配”，不把噪声喂给分类 |
 | 知识库未接入 / 检索失败 | `kbState=skipped/failed` | 提示“教材知识库暂未接入”，分类继续执行 |
+| 文档扫描器不可用（无 Play 服务） | `UnrecognizedInput` | 提示改用「相册多选」或手动输入，流程不中断 |
+| 多页扫描没识别出题目 | `UnrecognizedInput` | 提示确认图片清晰、题目带题号；页面缩略图保留可重试 |
+| 答题卡结构不合法 | `GenerationInvalid`，或 `AnswerSheetCodec.derive()` 兜底 | 合法结构直接使用，不合法则从题目推导并正常出卷 |
 | 指定方面没有知识点 | `NoKnowledgePointForAspect` | 提示方面名并列出可用方面 |
 | 数据读写失败 | `Persistence` | 提示文件错误，界面数据不丢失 |
 
@@ -203,10 +219,12 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 8. **联网搜索**：`ai/BingSearchService.kt` 的 `SearchService` 接口（必应 → 其他搜索 API）。
 9. **教材/教师用书知识库**：`domain/KnowledgeBase.kt`（当前 `EmptyKnowledgeBase`，接数据时实现 `search()` 并替换 `AppContainer.knowledgeBase`）。
 10. **检索流水线编排**：`domain/ResearchAssistant.kt` 的 `ResearchSource` 接口（可换查询构造、多路搜索、重排策略）。
+11. **文档扫描 / 矫正增强**：`platform/DocumentScanEngine.kt`（ML Kit 文档扫描器）与 `platform/ImageEnhancer.kt`（本地 EXIF 摆正 + 对比度增强），可换 OpenCV 透视矫正等方案。
+12. **题目分割**：`domain/QuestionSegmenter.kt` 的规则与 `AiService.segmentQuestions`（远程模型分割）；换排版/题型适配时只改这两处。
 
 ## 测试
 
-`app/src/test/java/com/example/aiexercise/` 下 61 个 JVM 单测：
+`app/src/test/java/com/example/aiexercise/` 下 81 个 JVM 单测：
 
 - `domain/ForgettingCurveTest`：初始间隔、SM-2 增长、遗忘重置、掌握度边界、保持率/逾期/紧迫度。
 - `domain/ExerciseIdentityTest`：规范化、指纹稳定性、相似度、同一题判定、短文本保护。
@@ -218,6 +236,10 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `domain/ResearchAssistantTest`：未配置搜索/知识库时跳过、搜索失败降级、AI 判定不匹配、知识库命中与 `citationLabel`。
 - `ai/LocalAiServiceTest`（新增）：网络解析筛选保留匹配命中、剔除广告噪声、全噪声时 `relevant=false`。
 - `domain/ExerciseToolkitTest`（新增）：分类前检索结果写入 `Exercise.lastResearch`，同题连续扫描不重复创建知识点且保留检索证据。
+- `domain/QuestionSegmenterTest`：单页多题切分、大题归属、跨页合并、页眉过滤、无题号退化为整份、空页。
+- `domain/AnswerSheetTest`：答题卡 JSON 形状（数字/数组/字符串/小题）、用户规范示例解析、非法结构可读报错、从题目推导分组与答题行数。
+- `domain/ExerciseToolkitTest`（新增）：练习卷答题卡 JSON 合法（大题/题非空、值合法）且题面 Markdown 保留在完整 JSON；多页扫描的大题/页码元信息写入习题，重复扫描合并页码且不新增条目。
+- `ai/LocalAiServiceTest`（新增）：`segmentQuestions` 跨页合并、出卷同时返回答题卡结构。
 - `data/AppDataStoreTest`：JSON 文件往返、缺失文件、仓库层。
 
 ## 运行截图（Android 模拟器 / API 37）
@@ -240,6 +262,11 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/16_research_pipeline.png` AI 分类前的自动资料检索（已筛出本题解析 / 知识库未接入 / 命中 3 条）
 - `screenshots/17_research_details.png` 展开检索详情：网络命中标题、摘要、URL
 - `screenshots/18_knowledge_by_exercise.png` 知识点页「按习题查看」（只看这道题的不会知识点）
+- `screenshots/24_document_scanner.png` ML Kit 文档扫描器（多页拍摄 / Enhance / Filters / Crop & rotate；模拟器虚拟摄像头画面）
+- `screenshots/20_pages_added.png` 多页扫描：两页缩略图 + 识别并分割入口
+- `screenshots/21_segments.png` 题目分割结果（跨页题合并为一条、大题/页码/知识点数）
+- `screenshots/22_segment_result.png` 单题结果页（第 1–2 页 · 跨页 + 该题自己的知识点）
+- `screenshots/23_answer_sheet_json.png` 练习卷答题卡 JSON（数字/数组/字符串/小题规范）
 - `screenshots/19_duplicate_research.png` 同题连续扫描：特判生效、未重复检索、保留原检索证据
 
 ## 环境说明（本机沙箱）

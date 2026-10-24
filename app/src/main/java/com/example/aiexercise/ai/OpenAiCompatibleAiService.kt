@@ -92,6 +92,18 @@ class OpenAiCompatibleAiService(
             },
         )
 
+    override suspend fun segmentQuestions(request: SegmentRequest): Outcome<SegmentPayload> =
+        callJson(
+            taskName = "扫描题目分割",
+            systemPrompt = SEGMENT_SYSTEM_PROMPT,
+            userPrompt = buildSegmentPrompt(request),
+            parse = { raw ->
+                AiJson.parseSegments(raw)?.let { payload ->
+                    (AiPayloadValidator.validateSegments(payload, request.pageCount) as? Outcome.Success)?.value
+                }
+            },
+        )
+
     /* ------------------------------ HTTP 调用 ------------------------------ */
 
     private suspend fun <T> callJson(
@@ -311,6 +323,43 @@ class OpenAiCompatibleAiService(
         }
     }
 
+    private fun buildSegmentPrompt(request: SegmentRequest): String = buildString {
+        val pages = if (request.pages.isNotEmpty()) request.pages else listOf(request.pagesText)
+        appendLine("下面是一次多页扫描得到的逐页 OCR 文本，请把它分割成一道道题目。")
+        appendLine("要求：")
+        appendLine("1. 只输出 JSON，不要输出任何解释；")
+        appendLine("2. 按“大题 → 题”切分；小题（（1）（2）等）留在所属题目里，不要单独切开；")
+        appendLine("3. 一道题如果跨页（上一页没写完、下一页开头是它的续写），必须合并成一条，pageFrom/pageTo 填对应页码；")
+        appendLine("4. 页眉、姓名/班级栏、页码等噪声不要放进题干；")
+        appendLine("5. JSON 结构：")
+        appendLine(
+            """
+            {
+              "questions": [
+                {
+                  "sectionTitle": "一、选择题",
+                  "questionText": "题干原文（含小题；可保留题号）",
+                  "pageFrom": 1,
+                  "pageTo": 2,
+                  "referenceAnswer": "如果 OCR 里有参考答案就填，没有就留空",
+                  "studentAnswer": "如果 OCR 里有学生作答就填，没有就留空"
+                }
+              ],
+              "note": "分割说明（可选）"
+            }
+            """.trimIndent(),
+        )
+        appendLine()
+        appendLine("【学科提示】${request.subjectHint.ifBlank { "未提供" }}")
+        appendLine("【页码总数】${request.pageCount}")
+        appendLine()
+        pages.forEachIndexed { index, text ->
+            appendLine("=== 第 ${index + 1} 页 ===")
+            appendLine(text.take(6000))
+            appendLine()
+        }
+    }
+
     private fun buildPaperPrompt(request: PaperRequest): String {
         val asker = request.asker
         val now = System.currentTimeMillis()
@@ -334,6 +383,7 @@ class OpenAiCompatibleAiService(
             appendLine("1. 只输出 JSON，不要输出 JSON 之外的任何文字；")
             appendLine("2. 题面 questionMarkdown 必须使用 Markdown（标题、列表、粗体；公式可写 LaTeX，如 \$x^2\$）；")
             appendLine("3. 每道题必须给出 answerMarkdown 与 explanationMarkdown，选择题必须给出 4 个选项；")
+            appendLine("3.1 answerSheet 是“答题卡结构”，只描述答题区，不含题干：数字=答题区行数，数组=选择题选项，字符串=填空题模板（用 ___ 表示填空位置）；必须有大题与题，小题可有可无；")
             appendLine("4. 题目要覆盖上面的知识点，优先考察最紧迫的；难度混合 easy/medium/hard；")
             appendLine("5. JSON 结构：")
             appendLine(
@@ -354,7 +404,16 @@ class OpenAiCompatibleAiService(
                       "knowledgePointId": "对应知识点 id",
                       "knowledgePointTitle": "对应知识点名称"
                     }
-                  ]
+                  ],
+                  "answerSheet": {
+                    "第一大题": {
+                      "第1题": 5,
+                      "第2题": {
+                        "第2题第1小题": ["选项A", "选项B", "选项C"],
+                        "第2题第2小题": "填空题___"
+                      }
+                    }
+                  }
                 }
                 """.trimIndent(),
             )
@@ -405,6 +464,12 @@ class OpenAiCompatibleAiService(
             你是一位严谨的教研老师。你的任务是从网络搜索结果里挑出真正讲解“这道题”的内容，
             剔除广告、下载站、只是同类但不同的题、以及没有实质解析的页面。
             只输出严格 JSON；没有匹配内容时如实返回 relevant=false，绝不编造解析。
+        """.trimIndent()
+
+        val SEGMENT_SYSTEM_PROMPT = """
+            你是一位教研员，擅长把拍照/扫描得到的试卷 OCR 文本整理成一道道题目。
+            必须处理跨页题目（上一页没写完、下一页续写要合并），去掉页眉页脚噪声，
+            并按“大题 → 题 → 小题”的结构输出严格 JSON。
         """.trimIndent()
 
         val PAPER_SYSTEM_PROMPT = """

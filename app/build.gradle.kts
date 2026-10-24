@@ -50,6 +50,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     // 本地 OCR：ML Kit 中文文字识别（模型打包进 APK，离线可用）
     implementation(libs.mlkit.text.recognition.chinese)
+    // 多页文档扫描（自动透视矫正 + 增强 + 多页），无 Play 服务时由本地增强回退
+    implementation(libs.mlkit.document.scanner)
     // 数据持久化 / AI JSON 契约
     implementation(libs.kotlinx.serialization.json)
 

@@ -4,10 +4,12 @@ import com.example.aiexercise.data.model.PaperQuestion
 import com.example.aiexercise.data.model.ResearchBundle
 import com.example.aiexercise.data.model.SolutionDigest
 import com.example.aiexercise.data.model.WebHit
+import com.example.aiexercise.domain.AnswerSheetCodec
 import com.example.aiexercise.domain.AppError
 import com.example.aiexercise.domain.ExerciseIdentity
 import com.example.aiexercise.domain.ForgettingCurve
 import com.example.aiexercise.domain.Outcome
+import com.example.aiexercise.domain.QuestionSegmenter
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -187,6 +189,28 @@ class LocalAiService : AiService {
         return AiPayloadValidator.validateGrade(payload)
     }
 
+    /* ----------------------------- 多页扫描分割 ----------------------------- */
+
+    override suspend fun segmentQuestions(request: SegmentRequest): Outcome<SegmentPayload> {
+        val pages = request.pages.ifEmpty { listOf(request.pagesText) }
+        val segments = QuestionSegmenter.segment(pages)
+        if (segments.isEmpty()) {
+            return Outcome.Failure(AppError.UnrecognizedInput("扫描内容为空或没有识别出题目"))
+        }
+        val payload = SegmentPayload(
+            questions = segments.map {
+                SegmentDraft(
+                    sectionTitle = it.sectionTitle,
+                    questionText = it.text,
+                    pageFrom = it.pageFrom,
+                    pageTo = it.pageTo,
+                )
+            },
+            note = "离线规则分割：按题号 / 大题标题切分，跨页续接自动合并",
+        )
+        return AiPayloadValidator.validateSegments(payload, pages.size)
+    }
+
     /* ----------------------------- 练习卷生成 ----------------------------- */
 
     override suspend fun generatePaper(request: PaperRequest): Outcome<PaperPayload> {
@@ -216,6 +240,8 @@ class LocalAiService : AiService {
             summary = "依据遗忘曲线紧迫度挑选 ${request.knowledgePoints.size} 个知识点：$titles。" +
                 "本卷由离线规则引擎模板生成；在「设置」中配置云端 AI 后可生成学科化题目。",
             questions = questions,
+            // 答题卡结构：数字=答题行数、数组=选择题选项、字符串=填空（下划线）
+            answerSheet = AnswerSheetCodec.encode(AnswerSheetCodec.derive(questions)),
         )
         return AiPayloadValidator.validatePaper(payload)
     }

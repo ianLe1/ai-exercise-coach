@@ -26,6 +26,14 @@ data class ScanInput(
     val source: ExerciseSource = ExerciseSource.MANUAL,
     val imagePath: String? = null,
     val subjectHint: String = "",
+    /** 多页扫描分割后：所属大题（如“一、选择题”）。 */
+    val sectionTitle: String = "",
+    /** 该题出现的页码（从 1 开始，跨页时多个）。 */
+    val pageIndexes: List<Int> = emptyList(),
+    /** 跨页题标记。 */
+    val crossPage: Boolean = false,
+    /** 同一次多页扫描的批次 id。 */
+    val scanPaperId: String = "",
 )
 
 data class ScanResult(
@@ -50,8 +58,13 @@ data class GradeOutcome(
 data class PaperOutcome(
     val data: AppData,
     val paper: PracticePaper,
+    /** 答题卡结构 JSON（用户规范格式：大题 → 题 → 可选小题；数字/数组/字符串）。 */
     val json: String,
+    /** 完整练习卷 JSON（含题面/答案 Markdown 与元数据），用于归档与调试。 */
+    val fullJson: String,
     val selectedKnowledgePoints: List<KnowledgePoint>,
+    /** 答题卡结构是否由题目推导（AI 未给出合法结构时降级）。 */
+    val answerSheetDerived: Boolean = false,
 )
 
 data class ReviewOutcome(
@@ -151,6 +164,10 @@ class ExerciseToolkit(
             lastSeenAt = now,
             scanCount = 1,
             lastResearch = bundle,
+            sectionTitle = input.sectionTitle.trim(),
+            pageIndexes = input.pageIndexes,
+            crossPage = input.crossPage,
+            scanPaperId = input.scanPaperId,
         )
         val knowledgePoints = upsertKnowledgePoints(
             existing = data.knowledgePoints,
@@ -243,6 +260,7 @@ class ExerciseToolkit(
                 }
             }
         }
+        val mergedPages = (existing.pageIndexes + input.pageIndexes).distinct().sorted()
         val updatedExercise = existing.copy(
             subject = subject,
             referenceAnswer = referenceAnswer,
@@ -252,6 +270,10 @@ class ExerciseToolkit(
             scanCount = existing.scanCount + 1,
             refreshCount = existing.refreshCount + 1,
             lastResearch = researchBundle,
+            sectionTitle = existing.sectionTitle.ifBlank { input.sectionTitle.trim() },
+            pageIndexes = mergedPages,
+            crossPage = mergedPages.size > 1 || existing.crossPage,
+            scanPaperId = existing.scanPaperId.ifBlank { input.scanPaperId },
         )
         val newData = data.copy(
             exercises = data.exercises.map { if (it.id == existing.id) updatedExercise else it },
@@ -496,13 +518,21 @@ class ExerciseToolkit(
             },
             questions = validated.questions,
         )
-        val newData = data.copy(papers = (data.papers + paper).takeLast(config.maxStoredPapers))
+        val sheetFromAi = payload.answerSheet?.let { element ->
+            (AnswerSheetCodec.decode(element) as? Outcome.Success)?.value?.takeIf { it.sections.isNotEmpty() }
+        }
+        val sheet = sheetFromAi ?: AnswerSheetCodec.derive(validated.questions)
+        val sheetJson = AnswerSheetCodec.encodeToString(sheet)
+        val storedPaper = paper.copy(answerSheetJson = sheetJson, answerSheetDerived = sheetFromAi == null)
+        val newData = data.copy(papers = (data.papers + storedPaper).takeLast(config.maxStoredPapers))
         return Outcome.Success(
             PaperOutcome(
                 data = newData,
-                paper = paper,
-                json = AiJson.encodePaper(paper),
+                paper = storedPaper,
+                json = sheetJson,
+                fullJson = AiJson.encodePaper(storedPaper),
                 selectedKnowledgePoints = selected,
+                answerSheetDerived = sheetFromAi == null,
             ),
         )
     }

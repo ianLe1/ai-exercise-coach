@@ -29,6 +29,14 @@ class AppContainer(context: Context) {
     val settingsStore: AiSettingsStore = AiSettingsStore(appContext)
     val imageStore: ImageStore = ImageStore(appContext)
 
+    /* ---------------------------- 多页扫描 ---------------------------- */
+
+    /** ML Kit 文档扫描（自动透视矫正 + 增强 + 多页），无 Play 服务时 UI 回退相册多选。 */
+    val documentScanEngine: DocumentScanEngine = DocumentScanEngine(appContext)
+
+    /** 本地矫正/增强：相册多选与文档扫描器页图转存都走这里。 */
+    val imageEnhancer: ImageEnhancer = ImageEnhancer(appContext)
+
     /* ------------------------------ AI ------------------------------ */
 
     @Volatile

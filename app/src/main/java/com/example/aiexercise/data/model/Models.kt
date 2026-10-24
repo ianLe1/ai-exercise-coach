@@ -44,6 +44,14 @@ data class Exercise(
     val refreshCount: Int = 0,
     /** 最近一次“自动检索题目解析 + 教材知识库”的结果（随数据持久化）。 */
     val lastResearch: ResearchBundle? = null,
+    /** 多页扫描时所属大题（如“第一大题（选择题）”）。 */
+    val sectionTitle: String = "",
+    /** 该题出现在哪些页（从 1 开始）；跨页题会有多个页码。 */
+    val pageIndexes: List<Int> = emptyList(),
+    /** 题干是否跨页（分割时由页码差与续接判断得出）。 */
+    val crossPage: Boolean = false,
+    /** 同一份多页扫描产生的题目共享的扫描批次 id；手动输入为空。 */
+    val scanPaperId: String = "",
 )
 
 /**
@@ -136,6 +144,14 @@ data class PracticePaper(
     val requestedCount: Int = 0,
     val knowledgePoints: List<PaperKnowledgePointRef> = emptyList(),
     val questions: List<PaperQuestion> = emptyList(),
+    /**
+     * 答题卡结构 JSON（规范格式，只描述答题区）：
+     * `{"第一大题":{"第1题":5,"第2题":{"第2题第1小题":["A","B","C"],"第2题第2小题":"填空题___"}}}`
+     * 数字 = 答题区行数，数组 = 选择题选项，字符串 = 填空（下划线为填空位置）。
+     */
+    val answerSheetJson: String = "{}",
+    /** 答题卡结构是否由题目自动推导（AI 未给出合法结构时降级）。 */
+    val answerSheetDerived: Boolean = false,
 )
 
 /**
@@ -149,4 +165,6 @@ data class AppData(
     val knowledgePoints: List<KnowledgePoint> = emptyList(),
     val grades: List<GradeResult> = emptyList(),
     val papers: List<PracticePaper> = emptyList(),
+    /** 多页扫描批次（页图、OCR 文本、分割出的习题 id）。 */
+    val scanPapers: List<ScanPaper> = emptyList(),
 )

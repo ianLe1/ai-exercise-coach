@@ -6,6 +6,7 @@ import com.example.aiexercise.ai.GradeRequest
 import com.example.aiexercise.ai.PaperRequest
 import com.example.aiexercise.ai.SearchHit
 import com.example.aiexercise.ai.SearchService
+import com.example.aiexercise.ai.SegmentRequest
 import com.example.aiexercise.ai.SolutionFilterRequest
 import com.example.aiexercise.data.model.KbCitation
 import com.example.aiexercise.data.model.ResearchBundle
@@ -42,6 +43,9 @@ class ResearchAssistantTest {
 
         override suspend fun distillSolution(request: SolutionFilterRequest) =
             Outcome.Success(digest)
+
+        override suspend fun segmentQuestions(request: SegmentRequest) =
+            Outcome.Failure(AppError.Unexpected("测试未使用"))
     }
 
     private class FakeSearch(private val result: Outcome<List<SearchHit>>) : SearchService {

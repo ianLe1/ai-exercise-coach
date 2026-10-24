@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiexercise.ui.screens.KnowledgeScreen
 import com.example.aiexercise.ui.screens.PaperScreen
 import com.example.aiexercise.ui.screens.ResultScreen
+import com.example.aiexercise.ui.screens.SegmentsScreen
 import com.example.aiexercise.ui.screens.ScanScreen
 import com.example.aiexercise.ui.screens.SettingsScreen
 
@@ -47,7 +48,7 @@ fun AiExerciseRoot(viewModel: AppViewModel = viewModel()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (state.screen != AppScreen.Result) {
+            if (state.screen != AppScreen.Result && state.screen != AppScreen.Segments) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = state.screen == AppScreen.Scan,
@@ -85,6 +86,7 @@ fun AiExerciseRoot(viewModel: AppViewModel = viewModel()) {
             when (state.screen) {
                 AppScreen.Scan -> ScanScreen(state, viewModel)
                 AppScreen.Result -> ResultScreen(state, viewModel)
+                AppScreen.Segments -> SegmentsScreen(state, viewModel)
                 AppScreen.Knowledge -> KnowledgeScreen(state, viewModel)
                 AppScreen.Paper -> PaperScreen(state, viewModel)
                 AppScreen.Settings -> SettingsScreen(state, viewModel)

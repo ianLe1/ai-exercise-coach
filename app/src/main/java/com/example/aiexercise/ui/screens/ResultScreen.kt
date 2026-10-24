@@ -63,9 +63,9 @@ fun ResultScreen(state: UiState, viewModel: AppViewModel) {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            ScreenHeader("识别结果", "还没有扫描记录", onBack = { viewModel.backToScan(false) })
+            ScreenHeader("识别结果", "还没有扫描记录", onBack = { viewModel.backFromResult() })
             EmptyHint("暂无识别结果", "回到扫描页拍一张习题照片，或点「填入示例习题」体验完整流程。")
-            Button(onClick = { viewModel.backToScan(false) }) { Text("去扫描") }
+            Button(onClick = { viewModel.backFromResult() }) { Text("去扫描") }
         }
         return
     }
@@ -84,7 +84,7 @@ fun ResultScreen(state: UiState, viewModel: AppViewModel) {
         ScreenHeader(
             title = "识别结果",
             subtitle = "习题 ${exercise.id.take(8)} · ${sourceLabel(exercise.source)} · 已扫描 ${exercise.scanCount} 次",
-            onBack = { viewModel.backToScan(false) },
+            onBack = { viewModel.backFromResult() },
         )
 
         // 模块 5：连续扫描同一习题的特判提示
@@ -127,6 +127,12 @@ fun ResultScreen(state: UiState, viewModel: AppViewModel) {
                 Text(exercise.questionText, style = MaterialTheme.typography.bodyLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Tag(sourceLabel(exercise.source))
+                    if (exercise.sectionTitle.isNotBlank()) {
+                        Tag(exercise.sectionTitle)
+                    }
+                    if (exercise.pageIndexes.isNotEmpty()) {
+                        Tag(exercisePageLabel(exercise.pageIndexes, exercise.crossPage))
+                    }
                     if (exercise.fingerprint.isNotBlank()) {
                         Tag("指纹 ${exercise.fingerprint.take(10)}")
                     }
@@ -193,9 +199,11 @@ fun ResultScreen(state: UiState, viewModel: AppViewModel) {
 
         // 后续动作
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = viewModel::scan, enabled = !state.busy, modifier = Modifier.weight(1f)) {
-                Text("重新扫描此题（验证特判）")
-            }
+            OutlinedButton(
+                onClick = viewModel::rescanLastExercise,
+                enabled = !state.busy,
+                modifier = Modifier.weight(1f),
+            ) { Text("重新扫描此题（验证特判）") }
             OutlinedButton(
                 onClick = { viewModel.navigate(AppScreen.Knowledge) },
                 modifier = Modifier.weight(1f),
@@ -410,4 +418,10 @@ private fun ResearchCard(bundle: ResearchBundle) {
             }
         }
     }
+}
+
+/** 题目页码范围标签，例如「第1–2页 · 跨页」。 */
+private fun exercisePageLabel(pageIndexes: List<Int>, crossPage: Boolean): String = when {
+    pageIndexes.size <= 1 -> "第 ${pageIndexes.first()} 页"
+    else -> "第 ${pageIndexes.min()}–${pageIndexes.max()} 页" + if (crossPage) " · 跨页" else ""
 }

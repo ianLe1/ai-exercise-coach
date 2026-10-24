@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.example.aiexercise.ai.AiJson
 import com.example.aiexercise.data.model.PaperQuestion
 import com.example.aiexercise.data.model.PracticePaper
 import com.example.aiexercise.ui.AppViewModel
@@ -154,13 +155,16 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
         } else {
             PaperContent(
                 paper = paper,
-                json = state.lastPaperJson,
+                sheetJson = paper.answerSheetJson.ifBlank { state.lastPaperJson ?: "{}" },
                 showJson = state.showPaperJson,
                 onToggleJson = viewModel::toggleShowPaperJson,
                 onCopyJson = {
-                    state.lastPaperJson?.let { clipboard.setText(AnnotatedString(it)) }
-                    viewModel.notify("练习卷 JSON 已复制到剪贴板")
+                    val text = paper.answerSheetJson.ifBlank { state.lastPaperJson.orEmpty() }
+                    clipboard.setText(AnnotatedString(text))
+                    viewModel.notify("答题卡 JSON 已复制到剪贴板")
                 },
+                showFullJson = state.showFullPaperJson,
+                onToggleFullJson = viewModel::toggleShowFullPaperJson,
                 now = now,
             )
         }
@@ -170,12 +174,15 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
 @Composable
 private fun PaperContent(
     paper: PracticePaper,
-    json: String?,
+    sheetJson: String,
     showJson: Boolean,
     onToggleJson: () -> Unit,
     onCopyJson: () -> Unit,
+    showFullJson: Boolean,
+    onToggleFullJson: () -> Unit,
     now: Long,
 ) {
+    val fullJson = remember(paper) { AiJson.encodePaper(paper) }
     ElevatedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionHeader(paper.title, trailing = { Tag(paper.aspect) })
@@ -200,26 +207,26 @@ private fun PaperContent(
                 QuestionCard(index = index, question = question)
             }
             HorizontalDivider()
+            Text(
+                "答题卡 JSON 规范：数字 = 答题区行数；数组 = 选择题选项；字符串（含 ___）= 填空题；" +
+                    "对象 = 小题（可无）。题面与答案是 Markdown，另存于练习卷数据，可切换「完整 JSON」查看。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Row {
                 TextButton(onClick = onToggleJson) {
-                    Text(if (showJson) "隐藏 JSON" else "查看 JSON（Markdown 题面）")
+                    Text(if (showJson) "隐藏答题卡 JSON" else "查看答题卡 JSON")
                 }
-                TextButton(onClick = onCopyJson) { Text("复制 JSON") }
+                TextButton(onClick = onCopyJson) { Text("复制答题卡 JSON") }
+                TextButton(onClick = onToggleFullJson) {
+                    Text(if (showFullJson) "隐藏完整 JSON" else "完整 JSON（含题面）")
+                }
             }
-            if (showJson && json != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    SelectionContainer {
-                        Text(
-                            text = json,
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(12.dp),
-                        )
-                    }
-                }
+            if (showJson) {
+                JsonBlock(sheetJson)
+            }
+            if (showFullJson) {
+                JsonBlock(fullJson)
             }
         }
     }
@@ -277,4 +284,21 @@ private fun difficultyLabel(value: String): String = when (value.lowercase()) {
 private fun daysBetween(from: Long, to: Long): Long {
     val diff = (to - from).coerceAtLeast(0L)
     return diff / (24 * 60 * 60 * 1000)
+}
+
+@Composable
+private fun JsonBlock(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        SelectionContainer {
+            Text(
+                text = text,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+    }
 }

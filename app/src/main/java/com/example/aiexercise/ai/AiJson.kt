@@ -51,6 +51,11 @@ object AiJson {
         json.decodeFromString(PaperPayload.serializer(), objectText)
     }.getOrNull()
 
+    fun parseSegments(raw: String): SegmentPayload? = runCatching {
+        val objectText = extractJsonObject(raw) ?: return null
+        json.decodeFromString(SegmentPayload.serializer(), objectText)
+    }.getOrNull()
+
     fun encodePaper(paper: com.example.aiexercise.data.model.PracticePaper): String =
         json.encodeToString(com.example.aiexercise.data.model.PracticePaper.serializer(), paper)
 

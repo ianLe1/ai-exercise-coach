@@ -9,6 +9,7 @@ import com.example.aiexercise.data.model.WebHit
 import com.example.aiexercise.domain.AppError
 import com.example.aiexercise.domain.Outcome
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /* ------------------------------------------------------------------ */
 /* AI 输入 / 输出契约（JSON）                                           */
@@ -47,6 +48,35 @@ data class PaperPayload(
     val aspect: String = "",
     val summary: String = "",
     val questions: List<PaperQuestion> = emptyList(),
+    /** 答题卡结构（规范 JSON：大题 → 题 → 可选小题；数字/数组/字符串）。 */
+    val answerSheet: JsonElement? = null,
+)
+
+/** 多页扫描分割：一页页 OCR 文本 → 一道道题。 */
+@Serializable
+data class SegmentRequest(
+    val pagesText: String,
+    /** 逐页 OCR 文本（优先于 pagesText；跨页合并由分割器处理）。 */
+    val pages: List<String> = emptyList(),
+    val pageCount: Int = 0,
+    val subjectHint: String = "",
+    val asker: AskerProfile = AskerProfile(),
+)
+
+@Serializable
+data class SegmentDraft(
+    val sectionTitle: String = "",
+    val questionText: String = "",
+    val pageFrom: Int = 1,
+    val pageTo: Int = 1,
+    val referenceAnswer: String = "",
+    val studentAnswer: String = "",
+)
+
+@Serializable
+data class SegmentPayload(
+    val questions: List<SegmentDraft> = emptyList(),
+    val note: String = "",
 )
 
 @Serializable
@@ -110,6 +140,12 @@ interface AiService {
      */
     suspend fun distillSolution(request: SolutionFilterRequest): Outcome<SolutionDigest>
 
+    /**
+     * 多页扫描的题目分割：识别大题与题号，跨页的题合并成一条（pageFrom != pageTo）。
+     * 离线实现用 [com.example.aiexercise.domain.QuestionSegmenter]，远程实现走提示词。
+     */
+    suspend fun segmentQuestions(request: SegmentRequest): Outcome<SegmentPayload>
+
     suspend fun grade(request: GradeRequest): Outcome<GradePayload>
 
     suspend fun generatePaper(request: PaperRequest): Outcome<PaperPayload>
@@ -166,6 +202,35 @@ object AiPayloadValidator {
                     .take(5),
             ),
         )
+    }
+
+    /**
+     * 校验题目分割结果：
+     * - 丢掉空题面；一题都没有 → 可读的“未识别”错误；
+     * - 页号归一到 1..pageCount，pageTo 不小于 pageFrom；按起始页排序。
+     */
+    fun validateSegments(payload: SegmentPayload, pageCount: Int): Outcome<SegmentPayload> {
+        fun clampPage(value: Int): Int {
+            val atLeastOne = value.coerceAtLeast(1)
+            return if (pageCount > 0) atLeastOne.coerceAtMost(pageCount) else atLeastOne
+        }
+        val cleaned = payload.questions
+            .filter { it.questionText.isNotBlank() }
+            .map {
+                val from = clampPage(it.pageFrom)
+                val to = clampPage(it.pageTo).coerceAtLeast(from)
+                it.copy(
+                    sectionTitle = it.sectionTitle.trim(),
+                    questionText = it.questionText.trim(),
+                    pageFrom = from,
+                    pageTo = to,
+                )
+            }
+            .sortedBy { it.pageFrom }
+        if (cleaned.isEmpty()) {
+            return Outcome.Failure(AppError.UnrecognizedInput("没有从扫描内容里分割出题目，请重拍或改用手动输入"))
+        }
+        return Outcome.Success(payload.copy(questions = cleaned))
     }
 
     fun validatePaper(payload: PaperPayload): Outcome<PaperPayload> {

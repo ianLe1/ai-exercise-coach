@@ -1,7 +1,9 @@
 package com.example.aiexercise.ui.screens
 
+import android.app.Activity
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -15,12 +17,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -52,12 +57,25 @@ import java.io.File
 @Composable
 fun ScanScreen(state: UiState, viewModel: AppViewModel) {
     var cameraFile by remember { mutableStateOf<File?>(null) }
+    val activity = LocalContext.current as? Activity
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         cameraFile?.let { file -> if (success) viewModel.onCameraCaptured(file) }
     }
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let(viewModel::onGalleryPicked)
+    }
+    val galleryMultiLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(MAX_SCAN_PAGES),
+    ) { uris -> viewModel.onGalleryPickedMultiple(uris) }
+    val documentScanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.onDocumentScanResult(result.data)
+        } else {
+            viewModel.notify("已取消文档扫描", false)
+        }
     }
 
     Column(
@@ -140,6 +158,104 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
             }
         }
 
+        ElevatedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader("② 多页扫描（自动矫正 · 分割题目）")
+                Text(
+                    "多页试卷：文档扫描器会自动做透视矫正与增强；也可以从相册多选图片" +
+                        "（本地按 EXIF 摆正并提升对比度）。识别后会把题目一道一道切出来，跨页题自动合并。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            if (activity == null) {
+                                viewModel.notify("当前环境不支持文档扫描，请用相册多选", true)
+                            } else {
+                                viewModel.startDocumentScan(activity) { intentSender ->
+                                    documentScanLauncher.launch(
+                                        IntentSenderRequest.Builder(intentSender).build(),
+                                    )
+                                }
+                            }
+                        },
+                        enabled = !state.segmentsBusy && !state.busy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("文档扫描") }
+                    OutlinedButton(
+                        onClick = {
+                            galleryMultiLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
+                        enabled = !state.segmentsBusy && !state.busy,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("相册多选") }
+                }
+                if (state.scanPages.isNotEmpty()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(state.scanPages, key = { it.id }) { page ->
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.width(96.dp),
+                            ) {
+                                ImagePreview(page.imagePath, height = 120)
+                                Text(
+                                    "第 ${page.index} 页",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(
+                                    onClick = { viewModel.removeScanPage(page.id) },
+                                    enabled = !state.segmentsBusy,
+                                ) { Text("删除", style = MaterialTheme.typography.labelSmall) }
+                            }
+                        }
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            onClick = viewModel::ocrAndSegment,
+                            enabled = !state.segmentsBusy && !state.busy,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (state.segmentsBusy) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text("处理中…")
+                            } else {
+                                Text("识别并分割题目（${state.scanPages.size} 页）")
+                            }
+                        }
+                        if (state.segments.isNotEmpty()) {
+                            TextButton(onClick = viewModel::openSegments) {
+                                Text("上次分割 ${state.segments.size} 题")
+                            }
+                        }
+                    }
+                    if (state.segmentsBusy && state.segmentStage.isNotBlank()) {
+                        Text(
+                            "⏳ ${state.segmentStage}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    TextButton(onClick = viewModel::clearScanPages, enabled = !state.segmentsBusy) {
+                        Text("清空扫描页")
+                    }
+                } else {
+                    Text(
+                        "还没有扫描页：点「文档扫描」连续拍多页，或「相册多选」导入多张图。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
         OutlinedTextField(
             value = state.scanText,
             onValueChange = viewModel::updateScanText,
@@ -209,7 +325,7 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
 }
 
 @Composable
-private fun ImagePreview(path: String) {
+private fun ImagePreview(path: String, height: Int = 150) {
     val bitmap = remember(path) { BitmapFactory.decodeFile(path)?.asImageBitmap() }
     if (bitmap != null) {
         Image(
@@ -218,8 +334,11 @@ private fun ImagePreview(path: String) {
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(150.dp)
+                .height(height.dp)
                 .clip(RoundedCornerShape(12.dp)),
         )
     }
 }
+
+/** 单次最多支持多少扫描页（文档扫描器与相册多选共用）。 */
+private const val MAX_SCAN_PAGES = 20

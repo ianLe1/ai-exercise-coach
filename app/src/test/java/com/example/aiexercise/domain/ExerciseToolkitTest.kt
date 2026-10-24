@@ -2,6 +2,7 @@ package com.example.aiexercise.domain
 
 import com.example.aiexercise.ai.AiJson
 import com.example.aiexercise.ai.LocalAiService
+import com.example.aiexercise.domain.AnswerSheetCodec
 import com.example.aiexercise.data.model.AppData
 import com.example.aiexercise.data.model.ExerciseSource
 import com.example.aiexercise.data.model.ResearchBundle
@@ -172,20 +173,30 @@ class ExerciseToolkitTest {
     }
 
     @Test
-    fun paperIsValidJsonWithMarkdownQuestions() = runBlocking {
+    fun paperAnswerSheetJsonMatchesRequiredShape() = runBlocking {
         val scan = toolkit.scan(AppData(), scanInput()).successValue()
         val aspect = scan.knowledgePoints.first().aspect
 
         val outcome = toolkit.generatePaper(scan.data, aspect, count = 3).successValue()
 
         assertEquals(3, outcome.paper.questions.size)
+        // 对外 JSON 是「答题卡结构」：大题 → 题 →（可选小题），值只能是数字/数组/字符串/对象。
         assertTrue(outcome.json.trimStart().startsWith("{"))
-        val decoded = AiJson.decodePaper(outcome.json)
-        assertEquals(outcome.paper.id, decoded.id)
-        assertEquals(aspect, decoded.aspect)
-        assertTrue(decoded.questions.all { it.questionMarkdown.isNotBlank() && it.answerMarkdown.isNotBlank() })
+        assertEquals(outcome.paper.answerSheetJson, outcome.json)
+        val sheet = AnswerSheetCodec.parse(outcome.json).successValue()
+        assertTrue("必须至少有一个大题", sheet.sections.isNotEmpty())
+        assertTrue("至少要有一道题", sheet.questionCount > 0)
+        assertEquals(3, sheet.questionCount)
+        sheet.sections.forEach { (section, questions) ->
+            assertTrue("大题名不能为空", section.isNotBlank())
+            assertTrue("每个大题下至少一题", questions.isNotEmpty())
+        }
+        // 题面 / 答案 Markdown 仍保存在完整练习卷 JSON 里。
+        val full = AiJson.decodePaper(outcome.fullJson)
+        assertEquals(outcome.paper.id, full.id)
+        assertTrue(full.questions.all { it.questionMarkdown.isNotBlank() && it.answerMarkdown.isNotBlank() })
         assertTrue(
-            decoded.questions.any {
+            full.questions.any {
                 it.questionMarkdown.contains("**") || it.questionMarkdown.contains("###")
             },
         )
@@ -220,5 +231,36 @@ class ExerciseToolkitTest {
     fun tooShortTextIsRejectedWithReadableError() = runBlocking {
         val error = toolkit.scan(AppData(), ScanInput("x")).failureError()
         assertTrue(error is AppError.UnrecognizedInput)
+    }
+
+@Test
+    fun multiPageScanKeepsSectionAndPageRangeMetadata() = runBlocking {
+        val scan = toolkit.scan(
+            AppData(),
+            scanInput().copy(
+                sectionTitle = "一、选择题",
+                pageIndexes = listOf(1, 2),
+                crossPage = true,
+                scanPaperId = "paper-1",
+            ),
+        ).successValue()
+
+        val exercise = scan.exercise
+        assertEquals("一、选择题", exercise.sectionTitle)
+        assertEquals(listOf(1, 2), exercise.pageIndexes)
+        assertTrue(exercise.crossPage)
+        assertEquals("paper-1", exercise.scanPaperId)
+
+        // 再扫同一题：页码合并去重、批次保留、仍不新建条目。
+        val second = toolkit.scan(
+            scan.data,
+            scanInput().copy(sectionTitle = "一、选择题", pageIndexes = listOf(2, 3), scanPaperId = "paper-2"),
+        ).successValue()
+        assertTrue(second.isDuplicate)
+        assertEquals(1, second.data.exercises.size)
+        assertEquals(listOf(1, 2, 3), second.exercise.pageIndexes)
+        assertTrue(second.exercise.crossPage)
+        assertEquals("paper-1", second.exercise.scanPaperId)
+        assertEquals(1, second.data.knowledgePoints.size)
     }
 }

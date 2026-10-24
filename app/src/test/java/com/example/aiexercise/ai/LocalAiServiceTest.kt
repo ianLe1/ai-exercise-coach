@@ -133,4 +133,43 @@ class LocalAiServiceTest {
         assertTrue(payload.questions.any { it.questionMarkdown.contains("**") })
         assertTrue(payload.questions.all { it.knowledgePointId == point.id })
     }
+
+    @Test
+    fun segmentQuestionsSplitsNumberedPagesAndMergesCrossPageQuestion() = runBlocking {
+        val pages = listOf(
+            "1. 已知函数 f(x)=x²-4x+3，求 f(x) 在闭区间上的最大值与",
+            "最小值。\n2. 解方程 x²-5x+6=0。",
+        )
+        val payload = service.segmentQuestions(
+            SegmentRequest(
+                pagesText = pages.mapIndexed { i, text -> "=== 第 ${i + 1} 页 ===\n$text" }.joinToString("\n"),
+                pages = pages,
+                pageCount = pages.size,
+                subjectHint = "高二",
+            ),
+        ).successValue()
+
+        assertEquals(2, payload.questions.size)
+        assertEquals(1, payload.questions[0].pageFrom)
+        assertEquals(2, payload.questions[0].pageTo)
+        assertTrue(payload.questions[0].questionText.contains("最小值"))
+        assertEquals(2, payload.questions[1].pageFrom)
+    }
+
+    @Test
+    fun generatePaperAlsoReturnsAnswerSheetStructure() = runBlocking {
+        val request = PaperRequest(
+            aspect = "二次函数",
+            count = 3,
+            asker = AskerProfile(),
+            knowledgePoints = listOf(sampleKnowledgePoint()),
+        )
+        val payload = service.generatePaper(request).successValue()
+
+        assertEquals(3, payload.questions.size)
+        val sheet = payload.answerSheet ?: error("离线出卷也必须给出答题卡结构")
+        val parsed = com.example.aiexercise.domain.AnswerSheetCodec.decode(sheet).successValue()
+        assertTrue(parsed.sections.isNotEmpty())
+        assertEquals(3, parsed.questionCount)
+    }
 }
