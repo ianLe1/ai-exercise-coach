@@ -326,14 +326,12 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 **Android Studio 首次打开慢，通常是下面几件事（按收益从高到低）：**
 
 1. **首次 Gradle Sync 要下载依赖**：AGP / Compose / ML Kit 中文 OCR（含 ~40MB 模型）首次 sync 在本机实测 27 分钟，属网络下载一次性成本；之后 sync 是秒级（日志会显示 `Up-to-date models found in the cache`）。
-2. **IDE 堆太小**：AS 默认 `-Xmx2048m`，Compose 工程里会频繁 GC/卡顿。`Help → Edit Custom VM Options` 改成 `-Xmx4096m`（或 6144m）后重启。
-3. **项目内的 `.gradle-home/`、`.android-home/` 不要在 IDE 里保留**：这两个目录（合计 ≈1.8G）是本项目在没有 `~/.gradle` 写权限的沙箱里跑命令行构建用的；正常 Android Studio 用 `~/.gradle` 即可。放进项目里会让 IDE 文件索引与内置 AI 索引（日志里的 `aiplugin.rag.bm25.lucindex`）扫描几万个 jar/元数据，明显拖慢打开与全文索引。处理方式：`Project` 视图右键 → **Mark Directory as → Excluded**，或直接删除（`.gitignore` 已忽略，需要时命令行构建会重新生成）。
+2. **IDE 堆太小**：AS 默认 `-Xmx2048m`，Compose 工程里会频繁 GC/卡顿。已写入 `~/.config/Google/AndroidStudio2026.2.1/studio64.vmoptions`（`-Xmx4096m`）；对应中文菜单位置是 **帮助 → 编辑自定义 VM 选项**，改完需重启 IDE。
+3. **项目内的 `.gradle-home/`、`.android-home/` 已移出**：这两个目录（合计 ≈1.8G）原本是本机沙箱跑命令行构建用的，现已移到 `~/.cache/ai-exercise-build/`，项目里不再有大目录，IDE 不必再扫描它们（Android Studio 用 `~/.gradle` 即可）。若以后又出现大目录：`Project` 视图右键 → **将目录标记为 → 排除**。
 4. **Gradle JDK 选 21**：`Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK` 选 `jbr-21`（AS 自带），不要用 1.8/11 的旧 JDK，否则 Kotlin/AGP 会重新拉起 daemon。
 5. 只跑测试或装 APK 时，命令行比 IDE 快很多：
    ```bash
-   GRADLE_USER_HOME=$PWD/.gradle-home ANDROID_USER_HOME=$PWD/.android-home \
-     /home/lee/.gradle/wrapper/dists/gradle-9.6.0-bin/42k10rwplmzkhuboz9kdazi7s/gradle-9.6.0/bin/gradle \
-     :app:testDebugUnitTest :app:assembleDebug --console=plain
+   ./gradlew :app:testDebugUnitTest :app:assembleDebug
    adb install -r app/build/outputs/apk/debug/app-debug.apk
    ```
 6. 调试包 59MB，主要是 ML Kit 中文 OCR 的打包模型；如果更在意安装/打包速度、可以联网下载模型，可把 `libs.versions.toml` 里 `mlkit-text-recognition-chinese` 换成 Play Services 的非打包版（`play-services-mlkit-text-recognition-chinese`），APK 会降到 ≈20MB，但首次识别需要联网下载模型，离线场景改用 modlens 桥或手输。

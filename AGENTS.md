@@ -41,7 +41,7 @@ screenshots/            # 模拟器端到端验收截图（01–29）
 # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
-> 本机沙箱若 `~/.gradle` 不可写，可把 `GRADLE_USER_HOME` / `ANDROID_USER_HOME` 指到仓库内目录（`.gitignore` 已忽略 `.gradle-home/`、`.android-home/`），用解压好的 gradle 二进制直接跑；模拟器访问宿主机建议 `adb reverse tcp:8765 tcp:8765` + `http://127.0.0.1:8765`（部分镜像上 `10.0.2.2` 会卡在 SYN_SENT）。
+> 直接 `./gradlew` 即可（Gradle/Android 缓存使用默认的 `~/.gradle`、`~/.android`）。早期沙箱用的项目内 `.gradle-home/`、`.android-home/` 已移到 `~/.cache/ai-exercise-build/`，避免 Android Studio 索引 1.8G 缓存导致卡顿。模拟器访问宿主机建议 `adb reverse tcp:8765 tcp:8765` + `http://127.0.0.1:8765`（部分镜像上 `10.0.2.2` 会卡在 SYN_SENT）。
 
 ## 改代码时的硬性约定
 
@@ -61,7 +61,7 @@ screenshots/            # 模拟器端到端验收截图（01–29）
 ## 构建性能（本机）
 
 - `gradle.properties` 已调优（6G 堆 / parallel / build cache / configuration cache / Kotlin daemon 3G）；改构建参数时先量一下 `:app:clean :app:assembleDebug`（本机 ≈1m42s）与增量构建（≈5s）。
-- **不要把 `.gradle-home/`、`.android-home/` 提交或让 IDE 索引**（沙箱下命令行构建用，约 1.8G），否则 Android Studio 首次同步/索引会非常慢。
+- **不要把 Gradle/Android 缓存目录放进项目**（早期 `.gradle-home/` 已移到 `~/.cache/ai-exercise-build/`，约 1.8G）；项目内大目录会让 Android Studio 索引与 AI 索引非常慢。IDE 侧已把堆调到 4G（`~/.config/Google/AndroidStudio2026.2.1/studio64.vmoptions`）。
 - 首次 Gradle Sync 要下载 AGP/Compose/ML Kit 依赖（一次性，本机实测 27 分钟），之后为秒级。
 
 ## 提交与发布
