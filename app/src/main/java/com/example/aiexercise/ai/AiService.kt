@@ -1,6 +1,7 @@
 package com.example.aiexercise.ai
 
 import com.example.aiexercise.data.model.AskerProfile
+import com.example.aiexercise.data.model.GuidedExchange
 import com.example.aiexercise.data.model.KnowledgePoint
 import com.example.aiexercise.data.model.PaperQuestion
 import com.example.aiexercise.data.model.ResearchBundle
@@ -146,10 +147,63 @@ interface AiService {
      */
     suspend fun segmentQuestions(request: SegmentRequest): Outcome<SegmentPayload>
 
+    /** 提取练习卷答题卡里学生的作答（练习后扫描批改）。 */
+    suspend fun readAnswers(request: AnswerReadRequest): Outcome<AnswerReadPayload>
+
+    /** 引导式提问的一步：只提问与提示，不给直接答案。 */
+    suspend fun guidedStep(request: GuidedRequest): Outcome<GuidedPayload>
+
     suspend fun grade(request: GradeRequest): Outcome<GradePayload>
 
     suspend fun generatePaper(request: PaperRequest): Outcome<PaperPayload>
 }
+
+
+/* ------------------------------------------------------------------ */
+/* 练习批改与引导式提问（模块三）                                        */
+/* ------------------------------------------------------------------ */
+
+/** 扫描「练习卷答题卡」并提取学生的作答。 */
+@Serializable
+data class AnswerReadRequest(
+    val pagesText: List<String> = emptyList(),
+    val paperQuestions: List<PaperQuestion> = emptyList(),
+    val answerSheetJson: String = "",
+)
+
+/** 提取出的一条作答：index 对应练习卷第几题（1 起）。 */
+@Serializable
+data class AnswerDraft(
+    val index: Int = 0,
+    val questionHint: String = "",
+    val answerText: String = "",
+)
+
+@Serializable
+data class AnswerReadPayload(
+    val answers: List<AnswerDraft> = emptyList(),
+    val note: String = "",
+)
+
+/** 引导式提问请求：只给上下文与历史，要求 AI 不给直接答案。 */
+@Serializable
+data class GuidedRequest(
+    val questionText: String = "",
+    val questionTitle: String = "",
+    val referenceAnswer: String = "",
+    val studentAnswer: String = "",
+    val knowledgePointTitle: String = "",
+    val stage: Int = 1,
+    val exchanges: List<GuidedExchange> = emptyList(),
+)
+
+@Serializable
+data class GuidedPayload(
+    val question: String = "",
+    val feedback: String = "",
+    val resolved: Boolean = false,
+    val stage: Int = 0,
+)
 
 /**
  * AI 结果合法性校验：格式不合法 → 可读错误。
@@ -231,6 +285,42 @@ object AiPayloadValidator {
             return Outcome.Failure(AppError.UnrecognizedInput("没有从扫描内容里分割出题目，请重拍或改用手动输入"))
         }
         return Outcome.Success(payload.copy(questions = cleaned))
+    }
+
+
+    /** 校验答题卡识别结果：题目序号归一到 0..questionCount，作答去空白。 */
+    fun validateAnswers(payload: AnswerReadPayload, questionCount: Int): Outcome<AnswerReadPayload> {
+        val cleaned = payload.answers
+            .map {
+                it.copy(
+                    index = it.index.coerceIn(0, questionCount.coerceAtLeast(0)),
+                    questionHint = it.questionHint.trim().take(60),
+                    answerText = it.answerText.trim().take(600),
+                )
+            }
+            .filter { it.answerText.isNotBlank() }
+            .distinctBy { it.index }
+        if (cleaned.isEmpty()) {
+            return Outcome.Failure(
+                AppError.UnrecognizedInput("答题卡没有识别出任何作答内容，请重拍清晰些，或改用云端 AI / modlens 识别手写体。"),
+            )
+        }
+        return Outcome.Success(payload.copy(answers = cleaned, note = payload.note.trim().take(200)))
+    }
+
+    /** 校验引导式提问结果：必须有一句提问；stage 归一到 1..4。 */
+    fun validateGuided(payload: GuidedPayload): Outcome<GuidedPayload> {
+        val question = payload.question.trim()
+        if (question.isEmpty()) {
+            return Outcome.Failure(AppError.AiFormatError("引导式提问结果缺少 question 字段"))
+        }
+        return Outcome.Success(
+            payload.copy(
+                question = question.take(400),
+                feedback = payload.feedback.trim().take(400),
+                stage = payload.stage.coerceIn(1, 4),
+            ),
+        )
     }
 
     fun validatePaper(payload: PaperPayload): Outcome<PaperPayload> {

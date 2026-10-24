@@ -53,6 +53,14 @@ sealed class AppError(val userMessage: String, val technical: String = "") {
         technical,
     )
 
+    object CorrectionTooPoor : AppError(
+        "这次订正的质量太低（几乎没改对），先把这道题重新做一遍、写清步骤，再来提问。",
+    )
+
+    object NoWrongQuestion : AppError("这道题这次已经做对了，没有需要提问的错题。")
+
+    object PracticePaperMissing : AppError("没有找到这份练习卷，请先在「练习卷」页生成一份。")
+
     class Persistence(technical: String) : AppError("数据保存失败：$technical", technical)
 
     class Unexpected(technical: String) : AppError("发生未知错误：$technical", technical)

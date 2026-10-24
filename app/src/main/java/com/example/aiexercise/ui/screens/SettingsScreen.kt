@@ -222,6 +222,46 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
         }
 
         ElevatedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionHeader("教材知识库（ChinaTextbook）")
+                Text(
+                    "AI 分类知识点前的自动资料检索会到教材 / 教师用书里找依据。" +
+                        "需要先在电脑上启动 ChinaTextbook 检索服务（默认 http://127.0.0.1:8737，见知识库包里的 restore.sh / PACKAGE-INFO）；" +
+                        "模拟器请先 adb reverse tcp:8737 tcp:8737。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "当前：${state.kbLabel}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Checkbox(
+                        checked = state.kbEnabled,
+                        onCheckedChange = {
+                            viewModel.saveKnowledgeSettings(it, state.settingsKbEndpoint)
+                        },
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("启用教材知识库检索", style = MaterialTheme.typography.bodyMedium)
+                }
+                OutlinedTextField(
+                    value = state.settingsKbEndpoint,
+                    onValueChange = viewModel::updateSettingsKbEndpoint,
+                    label = { Text("服务地址（默认 http://127.0.0.1:8737）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = {
+                        viewModel.saveKnowledgeSettings(state.kbEnabled, state.settingsKbEndpoint)
+                    },
+                ) { Text("保存知识库设置") }
+            }
+        }
+
+        ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionHeader("提问者信息")
                 Text(
@@ -281,7 +321,7 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
                 "③ 联网搜索（ai/BingSearchService.kt 的 SearchService 接口，可换 Google/Brave/SearXNG）；" +
                 "④ 存储（data/store/AppDataStore.kt，当前单文件 JSON）；" +
                 "⑤ 遗忘曲线参数（domain/ForgettingCurve.kt 的 ForgettingCurveConfig）；" +
-                "⑥ 判重策略（domain/ToolConfig.kt 的 similarityThreshold 与 ExerciseIdentity 归一化规则）。",
+                "⑥ 判重策略（domain/ToolConfig.kt 的 similarityThreshold 与 ExerciseIdentity 归一化规则）；⑦ 教材知识库（domain/KnowledgeBase.kt 的 KnowledgeBase 接口，当前接 ChinaTextbook-KB 的 HTTP 检索服务）；⑧ 题目分割与答题卡 JSON（domain/QuestionSegmenter.kt、domain/AnswerSheet.kt）。",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

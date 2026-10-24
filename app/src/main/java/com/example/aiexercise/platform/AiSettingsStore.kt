@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.aiexercise.ai.AiMode
 import com.example.aiexercise.ai.AiSettings
 import com.example.aiexercise.ai.SearchMode
+import com.example.aiexercise.ai.KnowledgeSettings
 import com.example.aiexercise.ai.SearchSettings
 import com.example.aiexercise.ai.VisionMode
 import com.example.aiexercise.ai.VisionSettings
@@ -73,6 +74,20 @@ class AiSettingsStore(context: Context) {
         )
     }
 
+    fun loadKnowledge(): KnowledgeSettings {
+        return KnowledgeSettings(
+            enabled = prefs.getBoolean(KEY_KB_ENABLED, false),
+            endpoint = prefs.getString(KEY_KB_ENDPOINT, KnowledgeSettings.DEFAULT_KB_ENDPOINT).orEmpty(),
+        )
+    }
+
+    fun saveKnowledge(settings: KnowledgeSettings) {
+        prefs.edit()
+            .putBoolean(KEY_KB_ENABLED, settings.enabled)
+            .putString(KEY_KB_ENDPOINT, settings.endpoint.trim())
+            .apply()
+    }
+
     fun saveSearch(settings: SearchSettings) {
         prefs.edit()
             .putString(KEY_SEARCH_MODE, settings.mode.name)
@@ -93,5 +108,7 @@ class AiSettingsStore(context: Context) {
         const val KEY_SEARCH_MODE = "search_mode"
         const val KEY_BING_ENDPOINT = "bing_endpoint"
         const val KEY_BING_KEY = "bing_api_key"
+        const val KEY_KB_ENABLED = "kb_enabled"
+        const val KEY_KB_ENDPOINT = "kb_endpoint"
     }
 }

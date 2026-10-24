@@ -104,6 +104,31 @@ class OpenAiCompatibleAiService(
             },
         )
 
+
+    override suspend fun readAnswers(request: AnswerReadRequest): Outcome<AnswerReadPayload> =
+        callJson(
+            taskName = "答题卡识别",
+            systemPrompt = ANSWER_READ_SYSTEM_PROMPT,
+            userPrompt = buildAnswerReadPrompt(request),
+            parse = { raw ->
+                AiJson.parseAnswers(raw)?.let { payload ->
+                    (AiPayloadValidator.validateAnswers(payload, request.paperQuestions.size) as? Outcome.Success)?.value
+                }
+            },
+        )
+
+    override suspend fun guidedStep(request: GuidedRequest): Outcome<GuidedPayload> =
+        callJson(
+            taskName = "引导式提问",
+            systemPrompt = GUIDED_SYSTEM_PROMPT,
+            userPrompt = buildGuidedPrompt(request),
+            parse = { raw ->
+                AiJson.parseGuided(raw)?.let { payload ->
+                    (AiPayloadValidator.validateGuided(payload) as? Outcome.Success)?.value
+                }
+            },
+        )
+
     /* ------------------------------ HTTP 调用 ------------------------------ */
 
     private suspend fun <T> callJson(
@@ -446,6 +471,38 @@ class OpenAiCompatibleAiService(
         val error: ChatErrorBody? = null,
     )
 
+
+    private fun buildAnswerReadPrompt(request: AnswerReadRequest): String = buildString {
+        appendLine("这是一份练习卷的答题卡扫描 OCR 文本。请按题号提取学生的手写作答：")
+        appendLine("页数：${request.pagesText.size}")
+        request.pagesText.forEachIndexed { i, page ->
+            appendLine("=== 第 ${i + 1} 页 ===")
+            appendLine(page.take(4000))
+        }
+        appendLine("题目清单（按顺序，供你对照题号）：")
+        request.paperQuestions.forEachIndexed { i, q ->
+            appendLine("第 ${i + 1} 题（id=${q.id}）：${q.questionMarkdown.take(120).replace("\n", " ")}")
+        }
+        append("只输出 JSON：{\"answers\":[{\"index\":1,\"questionHint\":\"题号或题干预览\",\"answerText\":\"学生作答原文\"}],\"note\":\"\"}")
+    }
+
+    private fun buildGuidedPrompt(request: GuidedRequest): String = buildString {
+        appendLine("学生做错了这道题，正在订正。请用引导式提问帮他一步步想出来，**不要直接给答案或完整解法**。")
+        appendLine("题目：${request.questionText.take(800)}")
+        if (request.referenceAnswer.isNotBlank()) appendLine("参考答案（仅供你判断，不要直接透露）：${request.referenceAnswer.take(600)}")
+        if (request.studentAnswer.isNotBlank()) appendLine("学生当前作答：${request.studentAnswer.take(400)}")
+        if (request.knowledgePointTitle.isNotBlank()) appendLine("关联知识点：${request.knowledgePointTitle}")
+        appendLine("当前引导阶段：${request.stage}（共 3 步，第 4 步收尾）")
+        if (request.exchanges.isNotEmpty()) {
+            appendLine("历史对话：")
+            request.exchanges.takeLast(8).forEachIndexed { i, exchange ->
+                appendLine("${i + 1}. ${exchange.role}：${exchange.text.take(200)}")
+            }
+        }
+        appendLine("要求：一次只问一个问题；语气简短；给一点提示但不点破关键答案；若学生已经说对关键步骤，feedback 里肯定他并进入下一步；第 3 步之后 resolved=true 做收尾总结。")
+        append("只输出 JSON：{\"question\":\"下一步的引导问题\",\"feedback\":\"对上一句的简短点评\",\"resolved\":false,\"stage\":2}")
+    }
+
     private companion object {
         const val RETRY_DELAY_MS = 350L
 
@@ -477,4 +534,12 @@ class OpenAiCompatibleAiService(
             题面使用 Markdown，并输出严格的 JSON。题目必须可解、答案必须正确。
         """.trimIndent()
     }
+
+        private val ANSWER_READ_SYSTEM_PROMPT =
+            "你是一名批改练习卷的老师。根据答题卡的 OCR 文本，提取每个题号下学生的手写作答原文；" +
+                "识别不出就跳过该题，不要编造。只输出 JSON，不要 Markdown 围栏。"
+
+        private val GUIDED_SYSTEM_PROMPT =
+            "你是一名耐心的中学老师，用苏格拉底式提问引导学生自己想出解题步骤；" +
+                "绝不直接给出答案或完整过程；一次只问一个问题；学生说对关键点时给予肯定。只输出 JSON。"
 }

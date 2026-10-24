@@ -167,4 +167,12 @@ data class AppData(
     val papers: List<PracticePaper> = emptyList(),
     /** 多页扫描批次（页图、OCR 文本、分割出的习题 id）。 */
     val scanPapers: List<ScanPaper> = emptyList(),
+    /** 练习卷答题卡扫描批改（多轮订正累积）。 */
+    val practiceReviews: List<PracticeReview> = emptyList(),
+    /** 引导式提问会话（只保留未解决 + 最近已解决）。 */
+    val guidedSessions: List<GuidedSession> = emptyList(),
+    /** 是否已经问过「这次作业你用心做了吗」——首次使用必问。 */
+    val homeworkAskedOnce: Boolean = false,
+    /** 用户主动忽略（没用心做）的扫描次数。 */
+    val homeworkIgnoredCount: Int = 0,
 )

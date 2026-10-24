@@ -8,6 +8,7 @@ import com.example.aiexercise.domain.AnswerSheetCodec
 import com.example.aiexercise.domain.AppError
 import com.example.aiexercise.domain.ExerciseIdentity
 import com.example.aiexercise.domain.ForgettingCurve
+import com.example.aiexercise.domain.LocalGuidedTutor
 import com.example.aiexercise.domain.Outcome
 import com.example.aiexercise.domain.QuestionSegmenter
 import kotlin.math.abs
@@ -460,6 +461,47 @@ class LocalAiService : AiService {
         val chinese = listOf("古诗", "文言文", "阅读理解", "作文", "修辞", "意象", "实词", "虚词")
     }
 
+
+    /* ------------------------- 练习答题卡 + 引导式提问 ------------------------- */
+
+    override suspend fun readAnswers(request: AnswerReadRequest): Outcome<AnswerReadPayload> {
+        val lines = request.pagesText
+            .flatMap { it.lines() }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        val numbered = Regex("^(?:第)?(\\d{1,3})[.、:：)）]?\\s*(.*)$")
+        val byNumber = lines.mapNotNull { line ->
+            val match = numbered.find(line) ?: return@mapNotNull null
+            val index = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val rest = match.groupValues[2].trim()
+            if (rest.isEmpty()) null else AnswerDraft(index = index, questionHint = line.take(24), answerText = rest)
+        }
+        val answers = if (byNumber.isNotEmpty()) {
+            byNumber.distinctBy { it.index }
+        } else {
+            lines.filter { it.length > 1 }.mapIndexed { i, line ->
+                AnswerDraft(index = i + 1, questionHint = line.take(24), answerText = line)
+            }
+        }.take(MAX_ANSWER_DRAFTS)
+        val payload = AnswerReadPayload(
+            answers = answers,
+            note = "离线规则：按题号或行顺序提取答题卡文字；手写体建议切到云端 AI 或 modlens 视觉桥。",
+        )
+        return AiPayloadValidator.validateAnswers(payload, request.paperQuestions.size)
+    }
+
+    override suspend fun guidedStep(request: GuidedRequest): Outcome<GuidedPayload> {
+        val turn = LocalGuidedTutor.next(request.stage, request.exchanges.lastOrNull()?.text.orEmpty())
+        return AiPayloadValidator.validateGuided(
+            GuidedPayload(
+                question = turn.question,
+                feedback = turn.feedback,
+                resolved = turn.resolved,
+                stage = turn.stage,
+            ),
+        )
+    }
+
     private companion object {
         const val MAX_POINTS = 3
         const val PASS_SCORE = 60
@@ -469,6 +511,7 @@ class LocalAiService : AiService {
 
         /** 一次最多采纳的搜索结果条数（拼进解析里）。 */
         const val MAX_DIGEST_SOURCES = 3
+        const val MAX_ANSWER_DRAFTS = 20
 
         /** 明显与“题目解析”无关的噪声词（离线过滤用）。 */
         val NOISE_WORDS = listOf("招聘", "广告", "下载", "优惠", "小说", "游戏", "彩票", "直播", "短视频")

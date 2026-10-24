@@ -4,13 +4,14 @@ import android.content.Context
 import com.example.aiexercise.ai.AiService
 import com.example.aiexercise.ai.AiServiceFactory
 import com.example.aiexercise.ai.AiSettings
+import com.example.aiexercise.ai.KnowledgeBaseFactory
+import com.example.aiexercise.ai.KnowledgeSettings
 import com.example.aiexercise.ai.SearchService
 import com.example.aiexercise.ai.SearchServiceFactory
 import com.example.aiexercise.ai.SearchSettings
 import com.example.aiexercise.ai.VisionSettings
 import com.example.aiexercise.data.AppRepository
 import com.example.aiexercise.data.store.JsonFileStore
-import com.example.aiexercise.domain.EmptyKnowledgeBase
 import com.example.aiexercise.domain.KnowledgeBase
 import java.io.File
 
@@ -86,9 +87,24 @@ class AppContainer(context: Context) {
 
     /**
      * 教材 / 教师用书知识库（可替换点）。
-     * 用户暂不提供教材数据，先注入空实现；接入真实数据时只替换这一行。
+     *
+     * 默认空实现（不联网）；在设置页打开后会装配 [com.example.aiexercise.ai.HttpKnowledgeBase]，
+     * 通过本机 ChinaTextbook-KB HTTP 服务检索国家中小学智慧教育平台教材。
      */
-    val knowledgeBase: KnowledgeBase = EmptyKnowledgeBase
+    @Volatile
+    var knowledgeSettings: KnowledgeSettings = settingsStore.loadKnowledge()
+        private set
+
+    @Volatile
+    var knowledgeBase: KnowledgeBase = KnowledgeBaseFactory.create(knowledgeSettings)
+        private set
+
+    fun saveKnowledge(settings: KnowledgeSettings): KnowledgeBase {
+        settingsStore.saveKnowledge(settings)
+        knowledgeSettings = settings
+        knowledgeBase = KnowledgeBaseFactory.create(settings)
+        return knowledgeBase
+    }
 
     /* ---------------------------- 联网搜索 ---------------------------- */
 

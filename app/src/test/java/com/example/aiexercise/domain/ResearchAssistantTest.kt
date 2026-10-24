@@ -1,14 +1,7 @@
 package com.example.aiexercise.domain
 
-import com.example.aiexercise.ai.AiService
-import com.example.aiexercise.ai.AnalyzeRequest
-import com.example.aiexercise.ai.GradeRequest
-import com.example.aiexercise.ai.PaperRequest
-import com.example.aiexercise.ai.SearchHit
-import com.example.aiexercise.ai.SearchService
-import com.example.aiexercise.ai.SegmentRequest
-import com.example.aiexercise.ai.SolutionFilterRequest
 import com.example.aiexercise.data.model.KbCitation
+import com.example.aiexercise.ai.*
 import com.example.aiexercise.data.model.ResearchBundle
 import com.example.aiexercise.data.model.SolutionDigest
 import kotlinx.coroutines.runBlocking
@@ -45,6 +38,12 @@ class ResearchAssistantTest {
             Outcome.Success(digest)
 
         override suspend fun segmentQuestions(request: SegmentRequest) =
+            Outcome.Failure(AppError.Unexpected("测试未使用"))
+
+        override suspend fun readAnswers(request: AnswerReadRequest) =
+            Outcome.Failure(AppError.Unexpected("测试未使用"))
+
+        override suspend fun guidedStep(request: GuidedRequest) =
             Outcome.Failure(AppError.Unexpected("测试未使用"))
     }
 

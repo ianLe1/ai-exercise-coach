@@ -38,6 +38,9 @@ import androidx.compose.ui.unit.dp
 import com.example.aiexercise.ai.AiJson
 import com.example.aiexercise.data.model.PaperQuestion
 import com.example.aiexercise.data.model.PracticePaper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import com.example.aiexercise.ui.AppViewModel
 import com.example.aiexercise.ui.UiState
 import com.example.aiexercise.ui.components.EmptyHint
@@ -55,6 +58,9 @@ import kotlin.math.roundToInt
 fun PaperScreen(state: UiState, viewModel: AppViewModel) {
     val now = System.currentTimeMillis()
     val clipboard = LocalClipboardManager.current
+    val answerPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(9),
+    ) { uris -> viewModel.onPracticePagesPicked(uris) }
     val aspects = state.data.knowledgePoints.filter { !it.archived }.flatMap { listOf(it.aspect, it.subject) }
         .map { it.trim() }
         .filter { it.isNotEmpty() }
@@ -134,6 +140,55 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
         }
 
         if (state.data.papers.isNotEmpty()) {
+        ElevatedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader("⑦ 完成练习后：扫描答题卡批改")
+                Text(
+                    "在纸上完成这份练习卷，扫描答题卡（可多页）：按题号提取你的作答、逐题批改，" +
+                        "并列出仍不会的知识点；订正后可再扫一次，系统会累计订正轮次。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                val paper = state.lastPaper
+                Text(
+                    if (paper == null) "先生成一份练习卷，再扫描它的答题卡。" else "当前练习卷：${paper.title}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.practicePages.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("已添加 ${state.practicePages.size} 页答题卡", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = viewModel::clearPracticePages) { Text("清空") }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            answerPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                            )
+                        },
+                        enabled = !state.practiceBusy,
+                    ) { Text("选择答题卡照片") }
+                    Button(
+                        onClick = { paper?.let { viewModel.reviewPractice(it.id) } },
+                        enabled = paper != null && !state.practiceBusy && state.practicePages.isNotEmpty(),
+                    ) { Text(if (state.practiceBusy) "批改中…" else "开始批改") }
+                }
+                if (state.practiceBusy && state.practiceStage.isNotBlank()) {
+                    Text(state.practiceStage, style = MaterialTheme.typography.labelSmall)
+                }
+                val review = state.lastReview
+                if (review != null && (paper == null || review.paperId == paper.id)) {
+                    Text(
+                        "上次批改：${review.score} 分 · ${review.wrong.size} 题仍错（第 ${review.round} 轮）",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = viewModel::openLastReview) { Text("查看上次批改结果 / 对错题提问") }
+                }
+            }
+        }
+
             SectionHeader("历史练习卷（${state.data.papers.size}）")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.data.papers.size) { index ->

@@ -10,10 +10,12 @@
 - 技术栈：Kotlin + Jetpack Compose（Material 3）+ kotlinx.serialization + Coroutines；AI 默认离线规则引擎，可一键切换 OpenAI 兼容接口。
 - 视觉扫描：默认 Google ML Kit 中文文字识别（端侧离线）；可切换 **modlens 视觉桥**（多模态模型读题，经 `tools/modlens-bridge` 本机 HTTP 桥接入，失败自动回退 ML Kit）。
 - 多页扫描：ML Kit 文档扫描器一次拍多页（自动透视矫正 + 增强），或相册多选后本地按 EXIF 摆正并提升对比度；OCR 后把题目**一道一道切出来**，跨页题自动合并，**每道题独立成为一条习题**（各自维护不会的知识点与遗忘曲线计时器）。
+- **完成练习的闭环**：生成练习卷 → 纸上作答 → 扫描答题卡（可多页）→ 逐题批改 → 列出**仍不会的知识点**；订正后再扫即第 N 轮，订正质量过低会拒绝引导式提问；作业与已维护的列表大相径庭时先问一句“这次是你自己认真做的吗”（首次使用必问，回答“没用心”则整次扫描忽略）。
+- **教材 / 教师用书知识库**：已接入 `ChinaTextbook-KB`（国家中小学智慧教育平台 **2,205 本**教材/教师用书的 SQLite FTS5 检索服务），作为 AI 分类知识点前的“教材依据”，命中会写进知识点证据并展示书名/页码。
 - 联网搜索：识别结果页可用 **必应 Web Search API v7** 搜索本题讲解 / 同类题（Azure Key 配置后启用，不配置则该入口隐藏）。
 - **AI 分类前的自动资料检索（固定流水线）**：每次 AI 生成/更新「不会的知识点」之前，先用题目正文联网搜索本题解析 → 交给 AI 过滤出真正匹配的解析 →（可选）检索教材/教师用书知识库 → 一起作为分类上下文；任何一步失败都降级为可读提示，不阻断知识点维护。知识库当前保留接口与空实现（教材数据待接入）。
 - 数据：单文件 JSON（应用私有目录 `files/data/app_data.json`），原子写；API Key 只存 SharedPreferences。
-- 验收：81 个 JVM 单元测试全部通过；`assembleDebug` 产出 APK；模拟器上完整跑通一遍流程（截图见 `screenshots/`）。
+- 验收：91 个 JVM 单元测试全部通过；`assembleDebug` 产出 APK；模拟器上完整跑通一遍流程（截图见 `screenshots/`）。
 
 ## 快速开始
 
@@ -112,6 +114,17 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - 产出 `GradeResult` 持久化；失败批改会**加速复习**：把该题相关知识点的下次复习时间拉回 1 天内、掌握度下降（`failedGradeAccelerateMs` 可配置）。
 - AI 输出不合法：远程服务先重试 1 次，仍失败返回 `AppError.AiFormatError`，UI 提示“AI 返回格式不合法，请重试或检查模型”；分数会被 clamp 到 0–100。
 
+### 3.1 完成练习后的扫描批改（订正 / 引导式提问 / 作业守卫）
+
+`domain/PracticeCoach.kt` 把「做练习」接回同一条知识点主线：
+
+- **扫描答题卡**：练习卷页「⑦ 完成练习后：扫描答题卡批改」→ 相册多选答题卡照片（可多页）→ `AiService.readAnswers` 按题号提取作答（离线按“题号/行顺序”，手写体建议切云端 AI 或 modlens 视觉桥）→ 逐题 `AiService.grade`。
+- **批次与轮次**：每次批改生成一条 `PracticeReview`（`round` 从 1 开始累加，存 `AppData.practiceReviews`），分数 = 各题得分均值，`passed` 要求无错题且达通过线；错题记录 `PracticeWrong`（作答、正确答案、解析、所属知识点）。
+- **仍不会的知识点**：错题命中的知识点掌握度下调、下次复习提前到 1 天内；上一轮错这一轮改对的，按“复习通过”提升掌握度并顺延计时器；批改页顶部列出 `仍不会的知识点`，下方是错题清单。
+- **订正质量守卫**（`domain/ReviewGuards.kt`）：从第 2 轮起比较“订正后的作答”与正确答案（文本相似度 + 关键数值命中），`LOW`（<0.35）判定为“没改对”，**拒绝发起引导式提问并提示先重做**；`MEDIUM/HIGH` 允许提问。参数集中在 `CorrectionGuard`。
+- **引导式提问**：对错题点「针对这题提问（引导式，不直接给答案）」→ `AiService.guidedStep` 多轮追问（离线 `LocalGuidedTutor`：先复述条件、再找关键公式、再检查易错点，3 步内不点破答案）；会话存 `AppData.guidedSessions`，AI 判定 `resolved` 时把过程信息并入「不会的知识点列表」（新增“订正薄弱点”或合并到对应知识点）。
+- **作业一致性守卫**（`HomeworkGuard`）：扫描（单题与多页批量都走）先比对本次题目与已有习题的相似度；**首次使用必问**“这次作业是你自己认真做的吗”，之后匹配率 < 0.2 时再问一次。回答“没用心，忽略这次扫描”→ 本次不写知识点、`homeworkIgnoredCount += 1`；回答“认真做的”才继续分析。
+
 ### 4. 知识点汇总
 
 - 批改完成后结果页立即列出「本题相关的不会知识点」：`grade()` 返回 `relatedKnowledgePoints`（按题目 + 参考答案匹配方面，若无匹配则回退为该题来源知识点），每张卡片显示方面、掌握度条、遗忘曲线状态（“已逾期 2 天 / 3 天后复习”）、证据，并可直接自评复习（忘了/勉强/熟练）刷新计时器。
@@ -150,10 +163,28 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - **三步流水线**（`domain/ResearchAssistant.kt`，`ResearchSource` 接口）：
   1. **网络搜索**：查询词 = 题目正文（压缩空白、截断 80 字）+ “解析 答案”，调 `SearchService`（必应；未配置则跳过并提示），取前 5 条命中。
   2. **AI 过滤**：命中交给 `AiService.distillSolution` 只保留真正讲解本题的内容 —— 远程模式走专门 prompt，要求“没有匹配就 relevant=false，不得编造”；离线引擎按「参考答案数值命中 0.45 + 题干关键词覆盖 0.35 + 答案覆盖 0.20 − 噪声词惩罚」打分，低于阈值判为不匹配。产出 `SolutionDigest(relevant, solutionMarkdown, confidence, matchedTitles)`。
-  3. **知识库**：`KnowledgeBase.search(KnowledgeQuery)` 检索教材/教师用书。当前注入 `EmptyKnowledgeBase`（文档数 0 → `kbState=skipped`，提示“教材知识库暂未接入（等待教材/教师用书数据）”）；接口与 `KbCitation` 结构已就绪，接入数据只需替换容器里的一行实现。
+  3. **知识库**：`KnowledgeBase.search(KnowledgeQuery)` 检索教材/教师用书。已接入 `ChinaTextbook-KB`（见下一节）：命中 `KbCitation`（书名/学段/学科/版本/年级/页码/原文片段），作为「教材依据」写进知识点证据；服务未启动时 `kbState=failed`，给出可读提示且不影响分类。
 - **喂给分类的上下文**：`AnalyzeRequest.research` 带上 `ResearchBundle`；离线引擎把“网络解析已筛选纳入参考”“教材依据：《书名》页码”写进知识点 `reason/detail`，远程 prompt 附带【自动检索到的本题解析】【教材/教师用书依据】两段，并明确“检索只作证据、不得照抄成标题”。
 - **持久化与展示**：`ResearchBundle` 随习题保存（`Exercise.lastResearch`）；结果页新增「① 自动资料检索（AI 分类前）」折叠卡（状态一行 + AI 筛出的解析 + 采纳来源 + 可展开的网络命中/教材依据），知识点列表紧跟其后作为「② 本题的不会知识点」。
 - **降级语义**：状态机 `webState ∈ ok / skipped / failed / no_match`，`kbState ∈ ok / empty / skipped / failed`；warning 用中文“；”拼接；`ResearchAssistant` 内部 `runCatching`，任何异常都不外抛、不影响分类。扫描按钮下方实时显示阶段（“联网搜索本题解析…”→“AI 正在过滤搜索结果…”→“AI 正在生成不会的知识点…”）。
+
+## 教材 / 教师用书知识库接入（ChinaTextbook-KB）
+
+数据来自 `ChinaTextbook-KB-smartedu-20261024.tar.zst`（国家中小学智慧教育平台教材/教师用书，2,205 本 / 229,576 页 / 141,848 个文本块；SQLite FTS5 + 向量混合检索，本机另有单页 Web UI 与 MCP）。App 只做**协议适配**，不打包教材数据。
+
+- **服务端启动**（数据包内 `restore.sh` 会建 venv；数据已在 `data/`）：
+
+  ```bash
+  cd ChinaTextbook-KB
+  .venv/bin/python -m ctkb serve          # http://127.0.0.1:8737
+  curl http://127.0.0.1:8737/api/health   # {"ok":true,...,"books_in_index":2205}
+  ```
+
+- **App 侧**（`ai/KnowledgeBaseClient.kt`）：`GET {endpoint}/api/search?q=<关键词>&limit=N`，映射 `results[].{chunk_id,book_id,page,text,bm25_score,book{title,level,subject,edition,grade,volume}}` → `KbCitation`；查询词 = 题目正文（去换行、截 120 字）+ 学科提示；超时 10s，非 2xx/解析失败抛出，由检索流水线降级。
+- **设置页**「教材知识库（ChinaTextbook）」：启用开关 + 服务地址（默认 `http://127.0.0.1:8737`）。模拟器需先 `adb reverse tcp:8737 tcp:8737`；真机填局域网 IP。
+- **效果**：分类前的资料检索会显示「教材依据：N 条」，知识点详情里追加 `【教材依据】…（人教版 选择性必修 第二册 · 高中 · 数学 · 第 98 页）`（见 `screenshots/26_kb_research.png`）。
+- **离线环境注意**：知识库的向量检索首次使用会从 HuggingFace 下载 `bge-small-zh-v1.5` 嵌入模型；本机无外网时可用**纯 BM25** 方式跑同一份索引（数据目录里去掉/不链接 `vectors.npy`，`CTKB_DATA` 指向该目录即可），检索质量仍可用（官方评测纯 BM25：hit@1 80.6% / hit@5 88.9%）。
+- **可替换**：`domain/KnowledgeBase.kt` 的 `KnowledgeBase` 接口；换 Elasticsearch/向量库/自建检索只需实现 `search()` 并改 `KnowledgeBaseFactory`。
 
 ## modlens 视觉桥与必应搜索接入
 
@@ -201,6 +232,9 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 | 知识库未接入 / 检索失败 | `kbState=skipped/failed` | 提示“教材知识库暂未接入”，分类继续执行 |
 | 文档扫描器不可用（无 Play 服务） | `UnrecognizedInput` | 提示改用「相册多选」或手动输入，流程不中断 |
 | 多页扫描没识别出题目 | `UnrecognizedInput` | 提示确认图片清晰、题目带题号；页面缩略图保留可重试 |
+| 作业与知识点列表大相径庭 / 首次使用 | `HomeworkGuardResult(action=ASK)` | 弹窗确认“是否认真做的”；选“没用心”则本次扫描不写知识点 |
+| 订正质量过低（<0.35） | `AppError.CorrectionTooPoor` | 提示先重做，拒绝引导式提问；批改页标红“订正质量低” |
+| 教材知识库服务未启动 / 返回异常 | `kbState=failed` + warning | 检索卡提示“教材知识库检索失败”，分类继续，不阻断流程 |
 | 答题卡结构不合法 | `GenerationInvalid`，或 `AnswerSheetCodec.derive()` 兜底 | 合法结构直接使用，不合法则从题目推导并正常出卷 |
 | 指定方面没有知识点 | `NoKnowledgePointForAspect` | 提示方面名并列出可用方面 |
 | 数据读写失败 | `Persistence` | 提示文件错误，界面数据不丢失 |
@@ -217,14 +251,14 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 6. **业务参数**：`domain/ToolConfig.kt`（相似度阈值、通过分、重复扫描掌握度上限、题量上限等）。
 7. **HTTP 传输**：`ai/HttpTransport.kt`（默认 HttpURLConnection，可换 OkHttp/Ktor）。
 8. **联网搜索**：`ai/BingSearchService.kt` 的 `SearchService` 接口（必应 → 其他搜索 API）。
-9. **教材/教师用书知识库**：`domain/KnowledgeBase.kt`（当前 `EmptyKnowledgeBase`，接数据时实现 `search()` 并替换 `AppContainer.knowledgeBase`）。
+9. **教材/教师用书知识库**：`domain/KnowledgeBase.kt` 接口 + `ai/KnowledgeBaseClient.kt`（当前接 ChinaTextbook-KB 的 HTTP 检索；关闭时退回 `EmptyKnowledgeBase`），可换 Elasticsearch / 向量库 / 自建检索。
 10. **检索流水线编排**：`domain/ResearchAssistant.kt` 的 `ResearchSource` 接口（可换查询构造、多路搜索、重排策略）。
 11. **文档扫描 / 矫正增强**：`platform/DocumentScanEngine.kt`（ML Kit 文档扫描器）与 `platform/ImageEnhancer.kt`（本地 EXIF 摆正 + 对比度增强），可换 OpenCV 透视矫正等方案。
 12. **题目分割**：`domain/QuestionSegmenter.kt` 的规则与 `AiService.segmentQuestions`（远程模型分割）；换排版/题型适配时只改这两处。
 
 ## 测试
 
-`app/src/test/java/com/example/aiexercise/` 下 81 个 JVM 单测：
+`app/src/test/java/com/example/aiexercise/` 下 91 个 JVM 单测：
 
 - `domain/ForgettingCurveTest`：初始间隔、SM-2 增长、遗忘重置、掌握度边界、保持率/逾期/紧迫度。
 - `domain/ExerciseIdentityTest`：规范化、指纹稳定性、相似度、同一题判定、短文本保护。
@@ -240,6 +274,8 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `domain/AnswerSheetTest`：答题卡 JSON 形状（数字/数组/字符串/小题）、用户规范示例解析、非法结构可读报错、从题目推导分组与答题行数。
 - `domain/ExerciseToolkitTest`（新增）：练习卷答题卡 JSON 合法（大题/题非空、值合法）且题面 Markdown 保留在完整 JSON；多页扫描的大题/页码元信息写入习题，重复扫描合并页码且不新增条目。
 - `ai/LocalAiServiceTest`（新增）：`segmentQuestions` 跨页合并、出卷同时返回答题卡结构。
+- `domain/PracticeCoachTest`（模块三验收流）：第 1 轮批改按题号批改、列出仍不会知识点并下调掌握度/提前复习；第 2 轮订正扫描轮次递增、订正质量过低拒绝引导式提问；引导会话 resolved 后信息并入不会知识点列表。
+- `domain/ReviewGuardsTest`：订正质量 NONE/LOW/HIGH 与数字命中、作业守卫“首次必问/大相径庭再问/匹配则直接继续”。
 - `data/AppDataStoreTest`：JSON 文件往返、缺失文件、仓库层。
 
 ## 运行截图（Android 模拟器 / API 37）
@@ -268,6 +304,11 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/22_segment_result.png` 单题结果页（第 1–2 页 · 跨页 + 该题自己的知识点）
 - `screenshots/23_answer_sheet_json.png` 练习卷答题卡 JSON（数字/数组/字符串/小题规范）
 - `screenshots/19_duplicate_research.png` 同题连续扫描：特判生效、未重复检索、保留原检索证据
+- `screenshots/25_homework_guard.png` 首次一起批改的作业守卫（确认“是否认真做的”）
+- `screenshots/26_kb_research.png` 接入 ChinaTextbook 教材知识库后的检索卡（教材依据：10 条 + 真实教材原文）
+- `screenshots/27_practice_review.png` 练习卷答题卡扫描批改（12 分 / 仍错 4 题 / 仍不会的知识点）
+- `screenshots/28_guided_tutor.png` 对错题的引导式提问（多轮追问、不直接给答案）
+- `screenshots/29_round2_correction.png` 订正后再扫：第 2 轮、订正质量过低 → 暂不开放提问
 
 ## 环境说明（本机沙箱）
 

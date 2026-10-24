@@ -22,18 +22,18 @@
 ```
 app/src/main/java/com/example/aiexercise/
 ├── data/       # model（全部 @Serializable）、store（单文件 JSON 原子写）、repository
-├── domain/     # 纯 Kotlin 核心：遗忘曲线、同一习题判定、知识点规则、工作流、检索流水线、知识库接口、题目分割、答题卡 JSON
-├── ai/         # AiService 抽象（离线规则 LocalAiService / OpenAI 兼容）、JSON 容错、必应、modlens 协议
+├── domain/     # 纯 Kotlin 核心：遗忘曲线、同一习题判定、知识点规则、工作流、检索流水线、知识库接口、题目分割、答题卡 JSON、练习批改（PracticeCoach）、守卫（ReviewGuards）
+├── ai/         # AiService 抽象（离线规则 LocalAiService / OpenAI 兼容）、JSON 容错、必应、modlens 协议、教材知识库客户端
 ├── platform/   # Android 实现：视觉引擎、图像存储、SharedPreferences、依赖容器
 └── ui/         # ViewModel + Compose 界面（扫描/结果/知识点/练习卷/设置）
 tools/modlens-bridge/   # 把本机 modlens CLI 包成 HTTP /analyze 的 Node 桥
-screenshots/            # 模拟器端到端验收截图（01–23）
+screenshots/            # 模拟器端到端验收截图（01–29）
 ```
 
 ## 构建与测试
 
 ```bash
-# 单元测试（81 个用例）
+# 单元测试（91 个用例）
 ./gradlew :app:testDebugUnitTest
 
 # 调试包
@@ -51,6 +51,10 @@ screenshots/            # 模拟器端到端验收截图（01–23）
 4. **检索只作证据**：`ResearchAssistant` 流水线必须 `runCatching` 降级，任何一步失败都不能阻断知识点维护；知识库当前是 `EmptyKnowledgeBase`，接数据时实现 `domain/KnowledgeBase.kt` 的 `search()` 并替换 `platform/AppContainer.kt:83` 一行。
 5. **密钥不进仓库**：必应 Key / OpenAI Key 只在 App 设置页由用户填写（SharedPreferences）；仓库内只允许占位与 stub。
 6. **改 UI 要同步截图与 README**：更新 `screenshots/` 与 README 的「运行截图」清单。
+
+7. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
+
+8. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
 7. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
 8. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
 
@@ -68,5 +72,5 @@ git push origin main
 
 ## 已知待办
 
-- 教材/教师用书知识库数据接入（接口与 UI 已就绪，见 `domain/KnowledgeBase.kt`）。
+- 知识库增强：向量检索需要 HuggingFace 嵌入模型（本机离线时走纯 BM25）；可补 PDF 原页图查看、OCR 更多扫描页。
 - 可选：GitHub Actions 跑单测 + 构建（目前本地验证为主）。

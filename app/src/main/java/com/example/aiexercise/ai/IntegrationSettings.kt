@@ -51,3 +51,20 @@ data class SearchHit(
     val url: String,
     val snippet: String,
 )
+
+/**
+ * 教材 / 教师用书知识库设置（可替换点）。
+ *
+ * 打开后，AI 分类知识点前会自动检索 ChinaTextbook-KB 服务（国家中小学智慧教育平台教材），
+ * 命中片段作为「教材依据」写进 [com.example.aiexercise.data.model.ResearchBundle]，
+ * 并喂给 AI 分类提示词；服务不可用时只降级提示，不阻断知识点维护。
+ */
+data class KnowledgeSettings(
+    val enabled: Boolean = false,
+    /** ChinaTextbook-KB 的 HTTP 服务地址；模拟器推荐 adb reverse 后用 127.0.0.1。 */
+    val endpoint: String = DEFAULT_KB_ENDPOINT,
+) {
+    companion object {
+        const val DEFAULT_KB_ENDPOINT = "http://127.0.0.1:8737"
+    }
+}

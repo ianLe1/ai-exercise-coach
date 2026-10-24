@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -15,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.aiexercise.ui.screens.KnowledgeScreen
 import com.example.aiexercise.ui.screens.PaperScreen
+import com.example.aiexercise.ui.screens.PracticeReviewScreen
 import com.example.aiexercise.ui.screens.ResultScreen
 import com.example.aiexercise.ui.screens.SegmentsScreen
 import com.example.aiexercise.ui.screens.ScanScreen
@@ -45,10 +48,28 @@ fun AiExerciseRoot(viewModel: AppViewModel = viewModel()) {
         }
     }
 
+    state.pendingGuard?.let { guard ->
+        AlertDialog(
+            onDismissRequest = { },
+            title = {
+                Text(if (guard.firstTime) "首次一起批改，先确认一下" else "这次作业和知识点列表对不上")
+            },
+            text = { Text(guard.message) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.resolveGuard(true) }) { Text("是我认真做的") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.resolveGuard(false) }) { Text("没用心，忽略这次扫描") }
+            },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (state.screen != AppScreen.Result && state.screen != AppScreen.Segments) {
+            if (state.screen != AppScreen.Result && state.screen != AppScreen.Segments &&
+                state.screen != AppScreen.PracticeReview
+            ) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = state.screen == AppScreen.Scan,
@@ -89,6 +110,7 @@ fun AiExerciseRoot(viewModel: AppViewModel = viewModel()) {
                 AppScreen.Segments -> SegmentsScreen(state, viewModel)
                 AppScreen.Knowledge -> KnowledgeScreen(state, viewModel)
                 AppScreen.Paper -> PaperScreen(state, viewModel)
+                AppScreen.PracticeReview -> PracticeReviewScreen(state, viewModel)
                 AppScreen.Settings -> SettingsScreen(state, viewModel)
             }
         }

@@ -61,4 +61,14 @@ object AiJson {
 
     fun decodePaper(raw: String): com.example.aiexercise.data.model.PracticePaper =
         json.decodeFromString(com.example.aiexercise.data.model.PracticePaper.serializer(), raw)
+
+    fun parseAnswers(raw: String): AnswerReadPayload? = runCatching {
+        val objectText = extractJsonObject(raw) ?: return null
+        json.decodeFromString(AnswerReadPayload.serializer(), objectText)
+    }.getOrNull()
+
+    fun parseGuided(raw: String): GuidedPayload? = runCatching {
+        val objectText = extractJsonObject(raw) ?: return null
+        json.decodeFromString(GuidedPayload.serializer(), objectText)
+    }.getOrNull()
 }

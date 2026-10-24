@@ -12,6 +12,7 @@ import com.example.aiexercise.ai.AiJson
 import com.example.aiexercise.ai.AiMode
 import com.example.aiexercise.ai.AiSettings
 import com.example.aiexercise.ai.AnalyzeRequest
+import com.example.aiexercise.ai.KnowledgeSettings
 import com.example.aiexercise.ai.LocalAiService
 import com.example.aiexercise.ai.SearchHit
 import com.example.aiexercise.ai.SegmentDraft
@@ -29,6 +30,12 @@ import com.example.aiexercise.data.model.ResearchBundle
 import com.example.aiexercise.data.model.ScanPage
 import com.example.aiexercise.data.model.ScanPaper
 import com.example.aiexercise.domain.AppError
+import com.example.aiexercise.domain.PracticeCoach
+import com.example.aiexercise.domain.HomeworkGuardAction
+import com.example.aiexercise.domain.HomeworkGuardResult
+import com.example.aiexercise.data.model.PracticeReview
+import com.example.aiexercise.data.model.GuidedSession
+import com.example.aiexercise.data.model.KnowledgePoint
 import com.example.aiexercise.domain.ExerciseToolkit
 import com.example.aiexercise.domain.ResearchAssistant
 import com.example.aiexercise.domain.ForgettingCurve
@@ -44,7 +51,7 @@ import java.io.File
 import java.util.UUID
 
 /** 页面路由（单 Activity + 自研简单导航，避免额外依赖）。 */
-enum class AppScreen { Scan, Result, Segments, Knowledge, Paper, Settings }
+enum class AppScreen { Scan, Result, Segments, Knowledge, Paper, PracticeReview, Settings }
 
 data class UiMessage(val text: String, val isError: Boolean = false, val id: Long = System.nanoTime())
 
@@ -110,6 +117,29 @@ data class UiState(
     val searchQuery: String = "",
     val searchHits: List<SearchHit> = emptyList(),
 
+    // 教材 / 教师用书知识库设置
+    val kbEnabled: Boolean = false,
+    val settingsKbEndpoint: String = "",
+    val kbLabel: String = "教材知识库（未接入）",
+
+    // 练习卷答题卡扫描批改（模块三）
+    val practicePages: List<ScanPage> = emptyList(),
+    val practiceBusy: Boolean = false,
+    val practiceStage: String = "",
+    val lastReview: PracticeReview? = null,
+    val reviewPoints: List<KnowledgePoint> = emptyList(),
+    val guidedSession: GuidedSession? = null,
+    val guidedInput: String = "",
+    val guidedBusy: Boolean = false,
+    /** 作业与知识点列表大相径庭时，等待用户确认的守卫。 */
+    val pendingGuard: HomeworkGuardResult? = null,
+    /** 守卫确认前暂存的单题扫描输入（用于「首次使用必问」后继续）。 */
+    val pendingScanInput: ScanInput? = null,
+    val pendingDrafts: List<SegmentDraft> = emptyList(),
+    val pendingPages: List<ScanPage> = emptyList(),
+    val pendingNote: String = "",
+    val pendingWarnings: List<String> = emptyList(),
+
     // 提问者
     val askerName: String = "",
     val askerGrade: String = "",
@@ -135,6 +165,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             searchMode = container.searchSettings.mode,
             settingsBingEndpoint = container.searchSettings.endpoint,
             settingsBingKey = container.searchSettings.apiKey,
+            kbEnabled = container.knowledgeSettings.enabled,
+            settingsKbEndpoint = container.knowledgeSettings.endpoint,
+            kbLabel = container.knowledgeBase.name,
         ),
     )
     val uiState: StateFlow<UiState> = _ui.asStateFlow()
@@ -406,73 +439,166 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val toolkit = newToolkit()
-            val paperId = current.scanPaperId.ifBlank { UUID.randomUUID().toString() }
-            var data = current.data
-            val results = mutableListOf<ScanResult>()
-            for ((index, draft) in drafts.withIndex()) {
-                _ui.update { it.copy(segmentStage = "正在分析第 ${index + 1}/${drafts.size} 题的知识点…") }
-                val pageFrom = draft.pageFrom.coerceIn(1, pages.size)
-                val pageTo = draft.pageTo.coerceIn(pageFrom, pages.size)
-                val input = ScanInput(
-                    rawText = draft.questionText,
-                    referenceAnswer = draft.referenceAnswer,
-                    studentAnswer = draft.studentAnswer,
-                    source = ExerciseSource.OCR_GALLERY,
-                    imagePath = pages[pageFrom - 1].imagePath,
-                    subjectHint = request.subjectHint,
-                    sectionTitle = draft.sectionTitle,
-                    pageIndexes = (pageFrom..pageTo).toList(),
-                    crossPage = pageTo > pageFrom,
-                    scanPaperId = paperId,
-                )
-                when (val scanned = toolkit.scan(data, input)) {
-                    is Outcome.Success -> {
-                        results += scanned.value
-                        data = scanned.value.data
-                        scanned.value.warning?.let { warnings += "第 ${index + 1} 题：${it.userMessage}" }
-                    }
-                    is Outcome.Failure -> warnings += "第 ${index + 1} 题分析失败：${scanned.error.userMessage}"
-                }
-            }
-            if (results.isEmpty()) {
+            val guard = PracticeCoach(container.aiService)
+                .guardHomework(current.data, drafts.map { it.questionText })
+            if (guard.action == HomeworkGuardAction.ASK) {
                 _ui.update {
                     it.copy(
                         segmentsBusy = false,
                         segmentStage = "",
-                        message = UiMessage(warnings.firstOrNull() ?: "题目分割成功，但逐题分析都失败了。", true),
+                        pendingGuard = guard,
+                        pendingDrafts = drafts,
+                        pendingPages = pages,
+                        pendingNote = note,
+                        pendingWarnings = warnings,
+                        message = UiMessage(guard.message, false),
                     )
                 }
                 return@launch
             }
-            val crossPageCount = drafts.count { it.pageTo > it.pageFrom }
-            val batch = ScanPaper(
-                id = paperId,
-                createdAt = System.currentTimeMillis(),
+
+            processDrafts(
+                baseData = current.data,
+                drafts = drafts,
                 pages = pages,
-                exerciseIds = results.map { it.exercise.id },
-                warnings = warnings,
+                note = note,
+                warningsSeed = warnings,
+                pageCount = pages.size,
+                subjectHint = request.subjectHint,
             )
-            data = data.copy(scanPapers = (data.scanPapers + batch).takeLast(MAX_STORED_SCAN_PAPERS))
-            val saveError = persist(data)
-            val message = buildString {
-                append("已把 ${results.size} 道题分别建为习题")
-                if (crossPageCount > 0) append("（其中 $crossPageCount 道跨页题已合并）")
-                if (note.isNotBlank()) append("；$note")
-                if (warnings.isNotEmpty()) append("；${warnings.size} 条提示")
-                saveError?.let { append("；但保存失败：${it.userMessage}") }
+        }
+    }
+
+    /** 确认守卫后（用心做 / 忽略）继续处理已分割好的题目。 */
+    fun resolveGuard(useThisScan: Boolean) {
+        val current = _ui.value
+        val guard = current.pendingGuard ?: return
+        val drafts = current.pendingDrafts
+        val pages = current.pendingPages
+        val note = current.pendingNote
+        val warnings = current.pendingWarnings
+        val pendingScan = current.pendingScanInput
+        _ui.update {
+            it.copy(
+                pendingGuard = null,
+                pendingDrafts = emptyList(),
+                pendingPages = emptyList(),
+                pendingScanInput = null,
+            )
+        }
+        viewModelScope.launch {
+            val coach = PracticeCoach(container.aiService)
+            if (!useThisScan) {
+                val data = coach.markHomeworkAsked(current.data, ignored = true)
+                val saveError = persist(data)
+                _ui.update {
+                    it.copy(
+                        data = data,
+                        message = UiMessage(
+                            "已按「没用心做」处理：本次扫描被忽略，不会写进不会的知识点列表。" +
+                                (saveError?.let { error -> "（保存失败：${error.userMessage}）" } ?: ""),
+                            saveError != null,
+                        ),
+                    )
+                }
+                return@launch
             }
+            val data = coach.markHomeworkAsked(current.data, ignored = false)
+            persist(data)
+            _ui.update { it.copy(data = data) }
+            if (pendingScan != null) {
+                performScan(pendingScan)
+                return@launch
+            }
+            processDrafts(
+                baseData = data,
+                drafts = drafts,
+                pages = pages,
+                note = note,
+                warningsSeed = warnings,
+                pageCount = pages.size,
+                subjectHint = current.data.asker.gradeLevel,
+            )
+        }
+    }
+
+    private suspend fun processDrafts(
+        baseData: com.example.aiexercise.data.model.AppData,
+        drafts: List<SegmentDraft>,
+        pages: List<ScanPage>,
+        note: String,
+        warningsSeed: List<String>,
+        pageCount: Int,
+        subjectHint: String,
+    ) {
+        val warnings = warningsSeed.toMutableList()
+        val toolkit = newToolkit()
+        val paperId = _ui.value.scanPaperId.ifBlank { UUID.randomUUID().toString() }
+        var data = baseData
+        val results = mutableListOf<ScanResult>()
+        for ((index, draft) in drafts.withIndex()) {
+            _ui.update { it.copy(segmentStage = "正在分析第 ${index + 1}/${drafts.size} 题的不会知识点…") }
+            val pageFrom = draft.pageFrom.coerceIn(1, pageCount)
+            val pageTo = draft.pageTo.coerceIn(pageFrom, pageCount)
+            val input = ScanInput(
+                rawText = draft.questionText,
+                referenceAnswer = draft.referenceAnswer,
+                studentAnswer = draft.studentAnswer,
+                source = ExerciseSource.OCR_GALLERY,
+                imagePath = pages[pageFrom - 1].imagePath,
+                subjectHint = subjectHint,
+                sectionTitle = draft.sectionTitle,
+                pageIndexes = (pageFrom..pageTo).toList(),
+                crossPage = pageTo > pageFrom,
+                scanPaperId = paperId,
+            )
+            when (val scanned = toolkit.scan(data, input)) {
+                is Outcome.Success -> {
+                    results += scanned.value
+                    data = scanned.value.data
+                    scanned.value.warning?.let { warning -> warnings += "第 ${index + 1} 题：${warning.userMessage}" }
+                }
+
+                is Outcome.Failure -> warnings += "第 ${index + 1} 题分析失败：${scanned.error.userMessage}"
+            }
+        }
+        if (results.isEmpty()) {
             _ui.update {
                 it.copy(
                     segmentsBusy = false,
                     segmentStage = "",
-                    data = data,
-                    segments = results,
-                    scanPaperId = paperId,
-                    screen = AppScreen.Segments,
-                    message = UiMessage(message, saveError != null),
+                    message = UiMessage(warnings.firstOrNull() ?: "题目分割成功，但逐题分析都失败了。", true),
                 )
             }
+            return
+        }
+        val crossPageCount = drafts.count { it.pageTo > it.pageFrom }
+        val batch = ScanPaper(
+            id = paperId,
+            createdAt = System.currentTimeMillis(),
+            pages = pages,
+            exerciseIds = results.map { it.exercise.id },
+            warnings = warnings,
+        )
+        data = data.copy(scanPapers = (data.scanPapers + batch).takeLast(MAX_STORED_SCAN_PAPERS))
+        val saveError = persist(data)
+        val message = buildString {
+            append("已把 ${results.size} 道题分别建为习题")
+            if (crossPageCount > 0) append("（其中 $crossPageCount 道跨页题已合并）")
+            if (note.isNotBlank()) append("；$note")
+            if (warnings.isNotEmpty()) append("；${warnings.size} 条提示")
+            saveError?.let { append("；但保存失败：${it.userMessage}") }
+        }
+        _ui.update {
+            it.copy(
+                segmentsBusy = false,
+                segmentStage = "",
+                data = data,
+                segments = results,
+                scanPaperId = paperId,
+                screen = AppScreen.Segments,
+                message = UiMessage(message, saveError != null),
+            )
         }
     }
 
@@ -489,9 +615,165 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSegments() = _ui.update { it.copy(screen = AppScreen.Segments) }
 
+    /** 回到最近一次练习批改结果页。 */
+    fun openLastReview() = _ui.update { it.copy(screen = AppScreen.PracticeReview) }
+
     /** 从结果页返回：多页分割流程回到题目列表，単题流程回扫描页。 */
     fun backFromResult() = _ui.update {
         if (it.segments.isNotEmpty()) it.copy(screen = AppScreen.Segments) else it.copy(screen = AppScreen.Scan)
+    }
+
+    /* -------------------- 模块三：练习卷扫描批改 / 订正 / 引导提问 -------------------- */
+
+    /** 选择答题卡照片（可多页）：本地矫正增强后暂存，等待「开始批改」。 */
+    fun onPracticePagesPicked(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            _ui.update { it.copy(practiceBusy = true, practiceStage = "正在保存答题卡照片…") }
+            val added = mutableListOf<ScanPage>()
+            val startIndex = _ui.value.practicePages.size
+            uris.forEachIndexed { i, uri ->
+                _ui.update { it.copy(practiceStage = "正在处理第 ${i + 1}/${uris.size} 页…") }
+                when (val enhanced = container.imageEnhancer.enhance(uri, "answer")) {
+                    is Outcome.Success -> added += ScanPage(
+                        id = UUID.randomUUID().toString(),
+                        index = startIndex + i + 1,
+                        imagePath = enhanced.value,
+                        corrected = true,
+                    )
+
+                    is Outcome.Failure -> Unit
+                }
+            }
+            _ui.update {
+                it.copy(
+                    practiceBusy = false,
+                    practiceStage = "",
+                    practicePages = it.practicePages + added,
+                    message = UiMessage(
+                        if (added.isEmpty()) "没有添加成功，请重试或检查相册权限。" else "已添加 ${added.size} 页答题卡，点「开始批改」即可。",
+                        added.isEmpty(),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun clearPracticePages() = _ui.update { it.copy(practicePages = emptyList(), practiceStage = "") }
+
+    /** 扫描练习卷答题卡 → 逐题批改 → 列出仍不会的知识点。 */
+    fun reviewPractice(paperId: String) {
+        val current = _ui.value
+        if (current.practiceBusy) return
+        if (current.practicePages.isEmpty()) {
+            setMessage("请先添加答题卡照片（可多页），再开始批改。", true)
+            return
+        }
+        viewModelScope.launch {
+            _ui.update { it.copy(practiceBusy = true, practiceStage = "正在识别答题卡…") }
+            val texts = mutableListOf<String>()
+            current.practicePages.forEachIndexed { i, page ->
+                _ui.update { it.copy(practiceStage = "正在识别第 ${i + 1}/${current.practicePages.size} 页答题卡…") }
+                when (val recognized = recognizeText(File(page.imagePath))) {
+                    is Outcome.Success -> texts += recognized.value
+                    is Outcome.Failure -> {
+                        texts += ""
+                        notify("第 ${i + 1} 页识别失败：${recognized.error.userMessage}", true)
+                    }
+                }
+            }
+            _ui.update { it.copy(practiceStage = "正在逐题批改并整理不会的知识点…") }
+            val outcome = PracticeCoach(container.aiService).review(current.data, paperId, texts)
+            when (outcome) {
+                is Outcome.Success -> {
+                    val value = outcome.value
+                    val saveError = persist(value.data)
+                    _ui.update {
+                        it.copy(
+                            practiceBusy = false,
+                            practiceStage = "",
+                            data = value.data,
+                            lastReview = value.review,
+                            reviewPoints = value.knowledgePoints,
+                            guidedSession = null,
+                            guidedInput = "",
+                            practicePages = emptyList(),
+                            screen = AppScreen.PracticeReview,
+                            message = UiMessage(
+                                buildString {
+                                    append("批改完成：${value.review.score} 分")
+                                    append(if (value.review.wrong.isEmpty()) "，全部做对" else "，${value.review.wrong.size} 题仍需订正")
+                                    saveError?.let { append("；保存失败：${it.userMessage}") }
+                                },
+                                saveError != null,
+                            ),
+                        )
+                    }
+                }
+
+                is Outcome.Failure -> _ui.update {
+                    it.copy(practiceBusy = false, practiceStage = "", message = UiMessage(outcome.error.userMessage, true))
+                }
+            }
+        }
+    }
+
+    /** 对某道错题发起引导式提问（订正质量太低会被拒绝）。 */
+    fun openGuided(questionId: String) {
+        val current = _ui.value
+        val review = current.lastReview ?: return
+        when (val result = PracticeCoach(container.aiService).openGuided(current.data, review.id, questionId)) {
+            is Outcome.Success -> {
+                viewModelScope.launch {
+                    persist(result.value.data)
+                    _ui.update {
+                        it.copy(data = result.value.data, guidedSession = result.value.session, guidedInput = "")
+                    }
+                }
+            }
+
+            is Outcome.Failure -> setMessage(result.error.userMessage, true)
+        }
+    }
+
+    fun closeGuided() = _ui.update { it.copy(guidedSession = null, guidedInput = "") }
+
+    fun updateGuidedInput(value: String) = _ui.update { it.copy(guidedInput = value) }
+
+    /** 回答引导式提问：AI 给下一步引导；收尾后过程并入不会的知识点列表。 */
+    fun replyGuided() {
+        val current = _ui.value
+        val session = current.guidedSession ?: return
+        val text = current.guidedInput.trim()
+        if (text.isEmpty()) {
+            setMessage("先写一句你自己的想法，再发送。", true)
+            return
+        }
+        if (current.guidedBusy) return
+        viewModelScope.launch {
+            _ui.update { it.copy(guidedBusy = true, guidedInput = "") }
+            when (val result = PracticeCoach(container.aiService).replyGuided(current.data, session.id, text)) {
+                is Outcome.Success -> {
+                    val saveError = persist(result.value.data)
+                    _ui.update {
+                        it.copy(
+                            guidedBusy = false,
+                            data = result.value.data,
+                            guidedSession = result.value.session,
+                            message = if (result.value.session.resolved) {
+                                UiMessage("这道题已收尾：提问中梳理出的薄弱点已并入不会的知识点列表。" + (saveError?.let { e -> "（保存失败：${e.userMessage}）" } ?: ""), saveError != null)
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+
+                is Outcome.Failure -> _ui.update {
+                    it.copy(guidedBusy = false, message = UiMessage(result.error.userMessage, true))
+                }
+            }
+        }
     }
 
     private fun newToolkit(): ExerciseToolkit = ExerciseToolkit(
@@ -569,15 +851,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             setMessage("题目内容太短（至少 $MIN_QUESTION_LENGTH 个字符），请先扫描或手动输入题目。", true)
             return
         }
-        performScan(
-            ScanInput(
-                rawText = text,
-                referenceAnswer = current.referenceAnswer,
-                studentAnswer = current.studentAnswer,
-                source = current.imageSource ?: ExerciseSource.MANUAL,
-                imagePath = current.imagePath,
-            ),
+        val input = ScanInput(
+            rawText = text,
+            referenceAnswer = current.referenceAnswer,
+            studentAnswer = current.studentAnswer,
+            source = current.imageSource ?: ExerciseSource.MANUAL,
+            imagePath = current.imagePath,
         )
+        // 作业与「不会的知识点列表」是否对得上：首次使用必问，之后大相径庭时再问一次
+        val guard = PracticeCoach(container.aiService).guardHomework(current.data, listOf(text))
+        if (guard.action == HomeworkGuardAction.ASK) {
+            _ui.update { it.copy(pendingGuard = guard, pendingScanInput = input) }
+            return
+        }
+        performScan(input)
     }
 
     /** 结果页「重新扫描此题」：用该题已有的文本/页码/批次再走一遍（用于验证同一习题特判）。 */
@@ -880,6 +1167,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateSettingsBingEndpoint(value: String) = _ui.update { it.copy(settingsBingEndpoint = value) }
+
+    fun updateSettingsKbEndpoint(value: String) = _ui.update { it.copy(settingsKbEndpoint = value) }
+
+    fun saveKnowledgeSettings(enabled: Boolean, endpoint: String) {
+        val settings = KnowledgeSettings(
+            enabled = enabled,
+            endpoint = endpoint.trim().ifBlank { KnowledgeSettings.DEFAULT_KB_ENDPOINT },
+        )
+        val base = container.saveKnowledge(settings)
+        _ui.update {
+            it.copy(
+                kbEnabled = settings.enabled,
+                settingsKbEndpoint = settings.endpoint,
+                kbLabel = base.name,
+                message = UiMessage(
+                    if (settings.enabled) {
+                        "教材知识库已启用：${base.name}（端点 ${settings.endpoint}）"
+                    } else {
+                        "教材知识库已关闭（分类前只做网络检索）"
+                    },
+                    false,
+                ),
+            )
+        }
+    }
 
     fun updateSettingsBingKey(value: String) = _ui.update { it.copy(settingsBingKey = value) }
 
