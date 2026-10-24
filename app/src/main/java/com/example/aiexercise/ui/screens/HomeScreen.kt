@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -100,8 +101,17 @@ fun HomeScreen(state: UiState, viewModel: AppViewModel) {
             Icon(Icons.Filled.Add, contentDescription = null)
             Text("  扫描习题", style = MaterialTheme.typography.titleMedium)
         }
+        OutlinedButton(
+            onClick = viewModel::generatePaperFull,
+            enabled = !state.busy,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+        ) {
+            Text("生成一整张试卷（100 分 / 90 分钟）")
+        }
         Text(
-            "拍下不会的题，AI 会整理成知识点并安排复习时间；作答写在纸上，做完练习后扫描答题卡批改。",
+            "拍下不会的题，AI 会整理成知识点并安排复习时间；试卷生成后打印或在纸上作答，再用上面的扫描批改。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

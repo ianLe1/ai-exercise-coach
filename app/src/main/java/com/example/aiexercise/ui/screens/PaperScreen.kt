@@ -85,55 +85,20 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         ScreenHeader(
-            title = "练习卷",
-            subtitle = "按遗忘曲线挑选最该复习的知识点，交给 AI 生成结构化练习卷",
+            title = "试卷",
+            subtitle = "按遗忘曲线出一整张正规试卷，作答后用「扫描习题」批改",
             onBack = { viewModel.navigate(AppScreen.Home) },
         )
 
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("⑥ 出卷设置")
-                OutlinedTextField(
-                    value = state.paperAspect,
-                    onValueChange = viewModel::updatePaperAspect,
-                    label = { Text("指定方面（如：二次函数 / 英语语法；留空=全部）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                SectionHeader("整卷生成")
+                Text(
+                    "按遗忘曲线紧迫度自动选题，生成一整张正规试卷：总分 100 分、90 分钟，" +
+                        "含选择题 / 填空题 / 解答题三大题。生成后可打印或在纸上作答，再用「扫描习题」批改。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (aspects.isNotEmpty()) {
-                    Text("可用的方面：", style = MaterialTheme.typography.labelSmall)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(aspects.size) { index ->
-                            val aspect = aspects[index]
-                            AssistChip(
-                                onClick = { viewModel.updatePaperAspect(aspect) },
-                                label = { Text(aspect) },
-                            )
-                        }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("题目数量：", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(
-                        onClick = { viewModel.updatePaperCount(state.paperCount - 1) },
-                        enabled = state.paperCount > 1,
-                    ) { Text("−") }
-                    Spacer(Modifier.width(8.dp))
-                    Text("${state.paperCount}", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = { viewModel.updatePaperCount(state.paperCount + 1) },
-                        enabled = state.paperCount < 20,
-                    ) { Text("+") }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Checkbox(
-                        checked = state.dueOnly,
-                        onCheckedChange = { viewModel.toggleDueOnly() },
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text("只从「已到期待复习」的知识点中选题", style = MaterialTheme.typography.bodySmall)
-                }
                 Button(
                     onClick = { viewModel.generatePaper() },
                     enabled = !state.busy,
@@ -144,73 +109,13 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
                         Spacer(Modifier.width(10.dp))
                         Text("AI 出卷中…")
                     } else {
-                        Text("生成练习卷")
+                        Text("生成一整张试卷")
                     }
                 }
             }
         }
 
         if (state.data.papers.isNotEmpty()) {
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("⑦ 完成练习后：扫描答题卡批改")
-                Text(
-                    "在纸上完成这份练习卷，扫描答题卡（可多页）：按题号提取你的作答、逐题批改，" +
-                        "并列出仍不会的知识点；订正后可再扫一次，系统会累计订正轮次。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                val paper = state.lastPaper
-                Text(
-                    if (paper == null) "先生成一份练习卷，再扫描它的答题卡。" else "当前练习卷：${paper.title}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (state.practicePages.isNotEmpty()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("已添加 ${state.practicePages.size} 页答题卡", style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = viewModel::clearPracticePages) { Text("清空") }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            answerPicker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                            )
-                        },
-                        enabled = !state.practiceBusy,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("相册多选答题卡") }
-                    OutlinedButton(
-                        onClick = {
-                            val (file, uri) = viewModel.createCameraOutput()
-                            answerCameraFile = file
-                            answerCameraLauncher.launch(uri)
-                        },
-                        enabled = !state.practiceBusy,
-                        modifier = Modifier.weight(1f),
-                    ) { Text("相机拍第 ${state.practicePages.size + 1} 页") }
-                }
-                Button(
-                    onClick = { paper?.let { viewModel.reviewPractice(it.id) } },
-                    enabled = paper != null && !state.practiceBusy && state.practicePages.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (state.practiceBusy) "批改中…" else "开始批改（全部 ${state.practicePages.size} 页）") }
-                if (state.practiceBusy && state.practiceStage.isNotBlank()) {
-                    Text(state.practiceStage, style = MaterialTheme.typography.labelSmall)
-                }
-                val review = state.lastReview
-                if (review != null && (paper == null || review.paperId == paper.id)) {
-                    Text(
-                        "上次批改：${review.score} 分 · ${review.wrong.size} 题仍错（第 ${review.round} 轮）",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    TextButton(onClick = viewModel::openLastReview) { Text("查看上次批改结果 / 对错题提问") }
-                }
-            }
-        }
-
             SectionHeader("历史练习卷（${state.data.papers.size}）")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(state.data.papers.size) { index ->
@@ -226,8 +131,8 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
         val paper = state.lastPaper
         if (paper == null) {
             EmptyHint(
-                "还没有生成过练习卷",
-                "上方选择方面与题目数量，点「生成练习卷」。生成结果会是一个 JSON 文件内容，题面为 Markdown。",
+                "还没有生成过试卷",
+                "点上方「生成一整张试卷」，AI 会按遗忘曲线挑知识点，生成 100 分 / 90 分钟的正规试卷。",
             )
         } else {
             PaperContent(
@@ -326,7 +231,7 @@ private fun QuestionCard(index: Int, question: PaperQuestion) {
                 Spacer(Modifier.width(8.dp))
                 Tag(question.knowledgePointTitle)
             }
-            Text(
+            com.example.aiexercise.ui.components.MarkdownText(
                 question.questionMarkdown,
                 style = MaterialTheme.typography.bodyLarge,
             )
@@ -341,11 +246,11 @@ private fun QuestionCard(index: Int, question: PaperQuestion) {
                 Text(if (showAnswer) "收起答案与解析" else "显示答案与解析")
             }
             if (showAnswer) {
-                Text("答案（Markdown）", style = MaterialTheme.typography.titleSmall)
-                Text(question.answerMarkdown, style = MaterialTheme.typography.bodyMedium)
+                Text("答案", style = MaterialTheme.typography.titleSmall)
+                com.example.aiexercise.ui.components.MarkdownText(question.answerMarkdown)
                 if (question.explanationMarkdown.isNotBlank()) {
-                    Text("解析（Markdown）", style = MaterialTheme.typography.titleSmall)
-                    Text(question.explanationMarkdown, style = MaterialTheme.typography.bodyMedium)
+                    Text("解析", style = MaterialTheme.typography.titleSmall)
+                    com.example.aiexercise.ui.components.MarkdownText(question.explanationMarkdown)
                 }
             }
         }

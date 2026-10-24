@@ -27,7 +27,7 @@ app/src/main/java/com/example/aiexercise/
 ├── platform/   # Android 实现：视觉引擎、图像存储、SharedPreferences、依赖容器
 └── ui/         # ViewModel + Compose 界面（扫描/结果/知识点/练习卷/设置）
 tools/modlens-bridge/   # 把本机 modlens CLI 包成 HTTP /analyze 的 Node 桥
-screenshots/            # 模拟器端到端验收截图（01–39）
+screenshots/            # 模拟器端到端验收截图（01–41）
 ```
 
 ## 构建与测试
@@ -56,14 +56,15 @@ screenshots/            # 模拟器端到端验收截图（01–39）
 
 8. **扫描即批改**：多页扫描分割出题目后，`SegmentsScreen` 的「批改这次扫描」调用 `ExerciseToolkit.grade` 逐题批改（作答来自 AI 分割时抽取的 `studentAnswer`）；扫描页不再有题目文本编辑框，单页扫描入口已全部删除。
 9. **视觉默认内置多模态**：`VisionSettings.mode` 默认 `CLOUD`，复用「设置 → 大模型」的 Base URL/Key/模型调用 OpenAI 兼容多模态接口（Markdown + LaTeX 结构化输出）；无 Key 或失败时自动回退 ML Kit。modlens 桥降级为可选项。
-10. **界面极简**：首页（`ui/screens/HomeScreen.kt`）只允许「按复习时间排序的知识点列表 + 扫描按钮」；练习卷/批改入口在扫描页底部；设置页只保留「大模型 + 用户信息」两块。参考答案不由用户填写，缺省时走 `AiService.solve` 自动生成。
+10. **整卷生成 + 批改统一**：首页「生成一整张试卷」走 `AppViewModel.generatePaperFull()`（默认 20 题、`dueOnly=false`），离线/远程都必须产出「总分 100 / 90 分钟、选择/填空/解答三大题」的整卷；练习卷页不再有单独的答题卡批改入口，批改一律走「扫描习题 → 分割 → 批改这次扫描」。题面用 `ui/components/MarkdownText.kt` 渲染（轻量 Markdown，不引第三方）。
+11. **界面极简**：首页（`ui/screens/HomeScreen.kt`）只允许「按复习时间排序的知识点列表 + 扫描按钮」；练习卷/批改入口在扫描页底部；设置页只保留「大模型 + 用户信息」两块。参考答案不由用户填写，缺省时走 `AiService.solve` 自动生成。
    扫描器必须在无 Google 服务（华为）设备上可用：`DocumentScanEngine.isAvailable` 为 false 时按钮退化为内置拍照扫描（相机逐页 + `ImageEnhancer` 增强后追加 `scanPages`）；答题卡批改只保留多页入口（相册多选 / 相机逐页）。
 
-11. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
+12. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
 
-12. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
-13. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
-14. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
+13. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
+14. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
+15. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
 
 ## 构建性能（本机）
 

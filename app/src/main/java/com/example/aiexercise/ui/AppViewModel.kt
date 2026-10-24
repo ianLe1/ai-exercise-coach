@@ -1086,6 +1086,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** 切换“完整练习卷 JSON（含 Markdown 题面/答案）”的展示。 */
     fun toggleShowFullPaperJson() = _ui.update { it.copy(showFullPaperJson = !it.showFullPaperJson) }
 
+    /** 首页「生成试卷」：不用进设置，直接按遗忘曲线出一整张正规试卷。 */
+    fun generatePaperFull() {
+        if (_ui.value.data.knowledgePoints.none { !it.archived }) {
+            setMessage("还没有不会的知识点，先扫描几道题吧。", true)
+            return
+        }
+        _ui.update { it.copy(paperAspect = "", paperCount = 20, dueOnly = false) }
+        generatePaper("")
+    }
+
     fun generatePaper(aspect: String = _ui.value.paperAspect) {
         val current = _ui.value
         if (current.busy) return

@@ -223,20 +223,30 @@ class LocalAiService : AiService {
             val point = request.knowledgePoints[index % request.knowledgePoints.size]
             val difficulty = DIFFICULTIES[index % DIFFICULTIES.size]
             val id = "L-${index + 1}"
-            val type = when (index % 3) {
-                0 -> "recall"
-                1 -> "choice"
+            val section = when {
+                index < (request.count * 8 + 19) / 20 -> "一、选择题"
+                index < ((request.count * 8 + 19) / 20 + (request.count * 6 + 19) / 20) -> "二、填空题"
+                else -> "三、解答题"
+            }
+            val type = when (section) {
+                "一、选择题" -> "choice"
+                "二、填空题" -> "recall"
                 else -> "application"
             }
-            questions += when (type) {
+            val question = when (type) {
                 "choice" -> choiceQuestion(id, index + 1, point, difficulty)
                 "application" -> applicationQuestion(id, index + 1, point, difficulty)
                 else -> recallQuestion(id, index + 1, point, difficulty)
             }
+            val sectionMark = if (index == 0 ||
+                (index == (request.count * 8 + 19) / 20) ||
+                (index == (request.count * 8 + 19) / 20 + (request.count * 6 + 19) / 20)
+            ) "$section\n\n" else ""
+            questions += question.copy(questionMarkdown = sectionMark + question.questionMarkdown)
         }
         val titles = request.knowledgePoints.joinToString("、") { it.title }
         val payload = PaperPayload(
-            title = "「${request.aspect}」专项练习卷（离线模板）",
+            title = "「${request.aspect}」综合复习试卷（离线模板 · 100 分 / 90 分钟）",
             aspect = request.aspect,
             summary = "依据遗忘曲线紧迫度挑选 ${request.knowledgePoints.size} 个知识点：$titles。" +
                 "本卷由离线规则引擎模板生成；在「设置」中配置云端 AI 后可生成学科化题目。",

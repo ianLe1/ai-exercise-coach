@@ -231,24 +231,16 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
 
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionHeader("做完练习了？")
+                SectionHeader("想再练一张整卷？")
                 Text(
-                    "按遗忘曲线出练习卷 → 在纸上作答 → 扫描答题卡批改；订正后可再扫一次。",
+                    "按遗忘曲线生成整张试卷 → 打印或在纸上作答 → 回首页「扫描习题」直接批改（不另设批改入口）。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = { viewModel.navigate(AppScreen.Paper) },
-                        modifier = Modifier.weight(1f),
-                    ) { Text("练习卷 / 批改") }
-                    if (state.lastReview != null) {
-                        OutlinedButton(
-                            onClick = viewModel::openLastReview,
-                            modifier = Modifier.weight(1f),
-                        ) { Text("上次批改") }
-                    }
-                }
+                OutlinedButton(
+                    onClick = { viewModel.navigate(AppScreen.Paper) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("查看 / 生成整张试卷") }
             }
         }
 

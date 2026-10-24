@@ -412,12 +412,12 @@ class OpenAiCompatibleAiService(
                 "复习要点=${point.detail.ifBlank { "无" }}"
         }
         return buildString {
-            appendLine("请为下面这位学生生成一份结构化练习卷。")
+            appendLine("请为下面这位学生生成一整张**正规试卷**（不是小练习）：总分 100 分、考试时间 90 分钟，")
             appendLine()
             appendLine("【学生】${asker.name.ifBlank { "我" }}（${asker.gradeLevel.ifBlank { "未填写" }}），学习目标：${asker.goal.ifBlank { "未填写" }}")
             appendLine()
             appendLine("【练习卷方面】${request.aspect}")
-            appendLine("【题量】${request.count} 题")
+            appendLine("【题量】${request.count} 题，按正规试卷分大题：一、选择题（${(request.count * 8 + 19) / 20} 题，每题 4 分）；二、填空题（${(request.count * 6 + 19) / 20} 题，每题 4 分）；三、解答题（其余题，每题 8~12 分）")
             appendLine()
             appendLine("【必须优先考察的知识点（已按遗忘曲线紧迫度排序）】")
             appendLine(points)
@@ -428,6 +428,8 @@ class OpenAiCompatibleAiService(
             appendLine("3. 每道题必须给出 answerMarkdown 与 explanationMarkdown，选择题必须给出 4 个选项；")
             appendLine("3.1 answerSheet 是“答题卡结构”，只描述答题区，不含题干：数字=答题区行数，数组=选择题选项，字符串=填空题模板（用 ___ 表示填空位置）；必须有大题与题，小题可有可无；")
             appendLine("4. 题目要覆盖上面的知识点，优先考察最紧迫的；难度混合 easy/medium/hard；")
+            appendLine("4.1 这是一整张试卷：questionMarkdown 里要带试卷标题、考试时间/总分说明，并在每道题前标出「一、选择题」「二、填空题」「三、解答题」分节与小问；")
+            appendLine("4.2 选择题必须 4 个选项 A/B/C/D；填空题用 ___ 标空；解答题要有完整设问与求解过程分步；")
             appendLine("5. JSON 结构：")
             appendLine(
                 """

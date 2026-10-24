@@ -21,7 +21,7 @@ data class ToolConfig(
     /** 生成练习卷时，单卷最多题量 */
     val maxQuestionsPerPaper: Int = 20,
     /** 生成练习卷默认题量 */
-    val defaultPaperCount: Int = 5,
+    val defaultPaperCount: Int = 20,
     /** 单卷最多考察几个知识点 */
     val maxKnowledgePointsPerPaper: Int = 6,
     /** 本地最多保留多少份历史练习卷 */
