@@ -51,7 +51,7 @@ import java.io.File
 import java.util.UUID
 
 /** 页面路由（单 Activity + 自研简单导航，避免额外依赖）。 */
-enum class AppScreen { Scan, Result, Segments, Knowledge, Paper, PracticeReview, Settings }
+enum class AppScreen { Home, Scan, Result, Segments, Paper, PracticeReview, Settings }
 
 data class UiMessage(val text: String, val isError: Boolean = false, val id: Long = System.nanoTime())
 
@@ -59,7 +59,7 @@ data class UiState(
     val loading: Boolean = true,
     val busy: Boolean = false,
     val ocrBusy: Boolean = false,
-    val screen: AppScreen = AppScreen.Scan,
+    val screen: AppScreen = AppScreen.Home,
     val data: AppData = AppData(),
     val message: UiMessage? = null,
 
@@ -242,7 +242,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun backToScan(clearForm: Boolean) = _ui.update {
         if (clearForm) {
             it.copy(
-                screen = AppScreen.Scan,
+                screen = AppScreen.Home,
                 scanText = "",
                 referenceAnswer = "",
                 studentAnswer = "",
@@ -620,7 +620,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 从结果页返回：多页分割流程回到题目列表，単题流程回扫描页。 */
     fun backFromResult() = _ui.update {
-        if (it.segments.isNotEmpty()) it.copy(screen = AppScreen.Segments) else it.copy(screen = AppScreen.Scan)
+        if (it.segments.isNotEmpty()) it.copy(screen = AppScreen.Segments) else it.copy(screen = AppScreen.Home)
     }
 
     /* -------------------- 模块三：练习卷扫描批改 / 订正 / 引导提问 -------------------- */

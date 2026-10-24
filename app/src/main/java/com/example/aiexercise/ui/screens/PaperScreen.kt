@@ -41,6 +41,7 @@ import com.example.aiexercise.data.model.PracticePaper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.aiexercise.ui.AppScreen
 import com.example.aiexercise.ui.AppViewModel
 import com.example.aiexercise.ui.UiState
 import com.example.aiexercise.ui.components.EmptyHint
@@ -77,6 +78,7 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
         ScreenHeader(
             title = "练习卷",
             subtitle = "按遗忘曲线挑选最该复习的知识点，交给 AI 生成结构化练习卷",
+            onBack = { viewModel.navigate(AppScreen.Settings) },
         )
 
         ElevatedCard(Modifier.fillMaxWidth()) {

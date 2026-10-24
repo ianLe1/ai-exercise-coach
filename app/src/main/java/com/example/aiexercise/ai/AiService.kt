@@ -153,6 +153,12 @@ interface AiService {
     /** 引导式提问的一步：只提问与提示，不给直接答案。 */
     suspend fun guidedStep(request: GuidedRequest): Outcome<GuidedPayload>
 
+    /**
+     * 自动生成参考答案：学生作答在纸上，用户不填写参考答案，
+     * 由 AI 读题后给出参考要点与关键步骤，供知识点分类与后续批改使用。
+     */
+    suspend fun solve(request: SolveRequest): Outcome<SolvePayload>
+
     suspend fun grade(request: GradeRequest): Outcome<GradePayload>
 
     suspend fun generatePaper(request: PaperRequest): Outcome<PaperPayload>
@@ -195,6 +201,19 @@ data class GuidedRequest(
     val knowledgePointTitle: String = "",
     val stage: Int = 1,
     val exchanges: List<GuidedExchange> = emptyList(),
+)
+
+@Serializable
+data class SolveRequest(
+    val questionText: String = "",
+    val subjectHint: String = "",
+)
+
+@Serializable
+data class SolvePayload(
+    val referenceAnswer: String = "",
+    val stepsMarkdown: String = "",
+    val confidence: Double = 0.0,
 )
 
 @Serializable
@@ -319,6 +338,20 @@ object AiPayloadValidator {
                 question = question.take(400),
                 feedback = payload.feedback.trim().take(400),
                 stage = payload.stage.coerceIn(1, 4),
+            ),
+        )
+    }
+
+    fun validateSolution(payload: SolvePayload): Outcome<SolvePayload> {
+        val answer = payload.referenceAnswer.trim()
+        if (answer.isEmpty()) {
+            return Outcome.Failure(AppError.AiFormatError("AI 没有生成参考答案（referenceAnswer 为空）"))
+        }
+        return Outcome.Success(
+            payload.copy(
+                referenceAnswer = answer.take(1200),
+                stepsMarkdown = payload.stepsMarkdown.trim().take(1600),
+                confidence = payload.confidence.coerceIn(0.0, 1.0),
             ),
         )
     }

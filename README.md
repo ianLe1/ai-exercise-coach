@@ -10,6 +10,8 @@
 - 技术栈：Kotlin + Jetpack Compose（Material 3）+ kotlinx.serialization + Coroutines；AI 默认离线规则引擎，可一键切换 OpenAI 兼容接口。
 - 视觉扫描：默认 Google ML Kit 中文文字识别（端侧离线）；可切换 **modlens 视觉桥**（多模态模型读题，经 `tools/modlens-bridge` 本机 HTTP 桥接入，失败自动回退 ML Kit）。
 - 多页扫描：ML Kit 文档扫描器一次拍多页（自动透视矫正 + 增强），或相册多选后本地按 EXIF 摆正并提升对比度；OCR 后把题目**一道一道切出来**，跨页题自动合并，**每道题独立成为一条习题**（各自维护不会的知识点与遗忘曲线计时器）。
+- **界面只有两件事**：首页 = 按复习时间排序的「不会的知识点」列表 + 一个「扫描习题」按钮；练习卷、解题批改、视觉/搜索/知识库等全部收进「设置」（右上角齿轮），不再有底部 Tab。
+- **不手填答案**：学生作答写在纸上，参考答案由 AI 读题自动生成（`AiService.solve`），扫描页只保留题目内容。
 - **完成练习的闭环**：生成练习卷 → 纸上作答 → 扫描答题卡（可多页）→ 逐题批改 → 列出**仍不会的知识点**；订正后再扫即第 N 轮，订正质量过低会拒绝引导式提问；作业与已维护的列表大相径庭时先问一句“这次是你自己认真做的吗”（首次使用必问，回答“没用心”则整次扫描忽略）。
 - **教材 / 教师用书知识库**：已接入 `ChinaTextbook-KB`（国家中小学智慧教育平台 **2,205 本**教材/教师用书的 SQLite FTS5 检索服务），作为 AI 分类知识点前的“教材依据”，命中会写进知识点证据并展示书名/页码。
 - 联网搜索：识别结果页可用 **必应 Web Search API v7** 搜索本题讲解 / 同类题（Azure Key 配置后启用，不配置则该入口隐藏）。
@@ -211,7 +213,7 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 
 ### B. 搜索：必应 Web Search
 
-- 设置页「联网搜索（必应）」：开关 + Endpoint（默认 `https://api.bing.microsoft.com/v7.0/search`）+ `Ocp-Apim-Subscription-Key`（只存本机 SharedPreferences）。
+- 默认使用**普通必应网页搜索（免 Key）**：`https://www.bing.com/search?format=rss&q=...`，RSS 结果直接解析，无需 Azure 订阅；设置页仍可切换 Azure v7 端点 + Key 的高级模式。
 - 识别结果页出现「用必应搜索相关资料 / 同类题」：关键词 = 题目正文 + 关联知识点 + “解题思路”，`count=5&mkt=zh-CN&responseFilter=Webpages`；结果按标题/摘要/URL 展示，点击用系统浏览器打开。
 - 失败可读提示：未配置 Key / 401/403 → “必应搜索鉴权失败，请检查 Key”；网络错误 → `AiNetworkError`；搜索开关关闭时该入口整体隐藏。
 - 可替换：`ai/BingSearchService.kt` 的 `SearchService` 接口（可换 Google CSE / 博查 / 自建搜索）。
@@ -309,6 +311,8 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/27_practice_review.png` 练习卷答题卡扫描批改（12 分 / 仍错 4 题 / 仍不会的知识点）
 - `screenshots/28_guided_tutor.png` 对错题的引导式提问（多轮追问、不直接给答案）
 - `screenshots/29_round2_correction.png` 订正后再扫：第 2 轮、订正质量过低 → 暂不开放提问
+- `screenshots/30_home_list.png` 新首页：只有「按复习时间排序的知识点列表 + 扫描习题」
+- `screenshots/31_settings_hub.png` 设置页成为唯一入口（练习卷/批改 + 全部配置）
 
 ## 构建速度（Android Studio / 命令行）
 

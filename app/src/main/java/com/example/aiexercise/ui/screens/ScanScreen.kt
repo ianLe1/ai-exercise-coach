@@ -43,8 +43,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.aiexercise.ui.AppScreen
 import com.example.aiexercise.ui.AppViewModel
 import com.example.aiexercise.ui.UiState
+import com.example.aiexercise.ui.components.ScreenHeader
 import com.example.aiexercise.ui.components.SectionHeader
 import com.example.aiexercise.ui.components.Tag
 import java.io.File
@@ -85,11 +87,10 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("AI 习题教练", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "扫描习题 → AI 生成并维护「不会的知识点」与遗忘曲线计时器 → 批改 → 按遗忘曲线生成练习卷。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        ScreenHeader(
+            title = "扫描习题",
+            subtitle = "拍照 / 相册 / 多页试卷；参考答案由 AI 自动生成，你只需在纸上作答",
+            onBack = { viewModel.navigate(AppScreen.Home) },
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Tag("当前 AI：${state.aiLabel}")
@@ -264,21 +265,10 @@ fun ScanScreen(state: UiState, viewModel: AppViewModel) {
             modifier = Modifier.fillMaxWidth(),
             enabled = !state.ocrBusy,
         )
-        OutlinedTextField(
-            value = state.referenceAnswer,
-            onValueChange = viewModel::updateReferenceAnswer,
-            label = { Text("参考答案（AI 据此生成知识点、批改时使用）") },
-            minLines = 2,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.ocrBusy,
-        )
-        OutlinedTextField(
-            value = state.studentAnswer,
-            onValueChange = viewModel::updateStudentAnswer,
-            label = { Text("我的作答（批改时使用，可稍后补充）") },
-            minLines = 2,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.ocrBusy,
+        Text(
+            "参考答案由 AI 自动生成，你不用填写；作答写在纸上，做完后扫描答题卡批改。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

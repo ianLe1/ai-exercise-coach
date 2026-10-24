@@ -117,10 +117,86 @@ class BingSearchService(
     }
 }
 
+/** 免 Key 的普通必应网页搜索：解析 `format=rss` 端点（无需 Azure 订阅）。 */
+class BingWebSearchService(
+    private val endpoint: String = "https://www.bing.com/search",
+    private val transport: HttpTransport = UrlConnectionHttpTransport(),
+    private val timeoutMs: Int = 20_000,
+) : SearchService {
+
+    override val displayName: String = "必应网页搜索（免 Key）"
+
+    override suspend fun search(query: String, count: Int): Outcome<List<SearchHit>> {
+        val keyword = query.trim()
+        if (keyword.isEmpty()) return Outcome.Failure(AppError.UnrecognizedInput("搜索关键词为空"))
+        val safeCount = count.coerceIn(1, 10)
+        val url = "${endpoint.trimEnd('?', '&')}?format=rss&q=${URLEncoder.encode(keyword, "UTF-8")}&count=$safeCount&mkt=zh-CN"
+        return try {
+            val result = transport.getJson(url, mapOf("Accept" to "application/rss+xml, application/xml"), timeoutMs)
+            when {
+                result.statusCode in 200..299 -> BingRssPayload.parse(result.body)
+                else -> Outcome.Failure(
+                    AppError.AiNetworkError("必应网页搜索失败（HTTP ${result.statusCode}），请检查网络后重试。"),
+                )
+            }
+        } catch (exception: Exception) {
+            Outcome.Failure(
+                AppError.AiNetworkError("连接必应失败：${exception.message ?: exception.javaClass.simpleName}"),
+            )
+        }
+    }
+}
+
+/** 必应 RSS 结果解析（独立出来便于单测）。 */
+object BingRssPayload {
+    fun parse(raw: String): Outcome<List<SearchHit>> {
+        return try {
+            val items = Regex("<item[\\s>].*?</item>", RegexOption.DOT_MATCHES_ALL)
+                .findAll(raw)
+                .mapNotNull { match -> parseItem(match.value) }
+                .take(10)
+                .toList()
+            if (items.isEmpty()) {
+                Outcome.Failure(AppError.AiFormatError("必应网页搜索结果为空或格式不合法"))
+            } else {
+                Outcome.Success(items)
+            }
+        } catch (exception: Exception) {
+            Outcome.Failure(AppError.AiFormatError("必应网页搜索返回格式不合法：${exception.message}"))
+        }
+    }
+
+    private fun parseItem(block: String): SearchHit? {
+        val title = tag(block, "title").takeIf { it.isNotBlank() }
+        val link = tag(block, "link").takeIf { it.isNotBlank() }
+        if (link == null) return null
+        val description = tag(block, "description")
+            .replace(Regex("<[^>]+>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return SearchHit(title = title ?: link, url = link, snippet = description.take(240))
+    }
+
+    private fun tag(block: String, name: String): String {
+        val match = Regex("<$name[^>]*>(.*?)</$name>", RegexOption.DOT_MATCHES_ALL).find(block)
+        return match?.groupValues?.get(1)
+            ?.replace("<![CDATA[", "")
+            ?.replace("]]>", "")
+            ?.replace("&amp;", "&")
+            ?.replace("&lt;", "<")
+            ?.replace("&gt;", ">")
+            ?.replace("&#39;", "'")
+            ?.replace("&quot;", "\"")
+            ?.trim()
+            .orEmpty()
+    }
+}
+
 /** 搜索服务工厂：根据设置构建实例（OFF → null，表示不启用搜索）。 */
 object SearchServiceFactory {
     fun create(settings: SearchSettings): SearchService? = when (settings.mode) {
         SearchMode.OFF -> null
+        SearchMode.BING_WEB -> BingWebSearchService()
         SearchMode.BING -> BingSearchService(endpoint = settings.endpoint, apiKey = settings.apiKey)
     }
 }

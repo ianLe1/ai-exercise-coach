@@ -43,6 +43,9 @@ class ResearchAssistantTest {
         override suspend fun readAnswers(request: AnswerReadRequest) =
             Outcome.Failure(AppError.Unexpected("测试未使用"))
 
+        override suspend fun solve(request: SolveRequest): Outcome<SolvePayload> =
+            Outcome.Success(SolvePayload(referenceAnswer = "参考要点：测试用参考答案"))
+
         override suspend fun guidedStep(request: GuidedRequest) =
             Outcome.Failure(AppError.Unexpected("测试未使用"))
     }

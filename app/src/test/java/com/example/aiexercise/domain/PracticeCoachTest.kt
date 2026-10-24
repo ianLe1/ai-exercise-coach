@@ -14,6 +14,8 @@ import com.example.aiexercise.ai.PaperPayload
 import com.example.aiexercise.ai.PaperRequest
 import com.example.aiexercise.ai.SegmentPayload
 import com.example.aiexercise.ai.SegmentRequest
+import com.example.aiexercise.ai.SolveRequest
+import com.example.aiexercise.ai.SolvePayload
 import com.example.aiexercise.ai.SolutionFilterRequest
 import com.example.aiexercise.data.model.AppData
 import com.example.aiexercise.data.model.KnowledgePoint
@@ -118,6 +120,9 @@ class PracticeCoachTest {
 
         override suspend fun readAnswers(request: AnswerReadRequest) =
             Outcome.Success(AnswerReadPayload(answers = answers, note = "假答题卡"))
+
+        override suspend fun solve(request: SolveRequest): Outcome<SolvePayload> =
+            Outcome.Success(SolvePayload(referenceAnswer = "参考要点：测试用参考答案"))
 
         override suspend fun guidedStep(request: GuidedRequest) = Outcome.Success(guided)
     }

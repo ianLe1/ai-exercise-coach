@@ -31,6 +31,9 @@ data class VisionSettings(
 
 enum class SearchMode {
     OFF,
+    /** 普通必应网页搜索（RSS，免 Key）。 */
+    BING_WEB,
+    /** Azure 必应 Web Search API v7（需 Key）。 */
     BING,
 }
 

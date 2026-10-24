@@ -67,6 +67,11 @@ object AiJson {
         json.decodeFromString(AnswerReadPayload.serializer(), objectText)
     }.getOrNull()
 
+    fun parseSolution(raw: String): SolvePayload? = runCatching {
+        val objectText = extractJsonObject(raw) ?: return null
+        json.decodeFromString(SolvePayload.serializer(), objectText)
+    }.getOrNull()
+
     fun parseGuided(raw: String): GuidedPayload? = runCatching {
         val objectText = extractJsonObject(raw) ?: return null
         json.decodeFromString(GuidedPayload.serializer(), objectText)

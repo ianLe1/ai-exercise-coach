@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.example.aiexercise.ai.AiMode
 import com.example.aiexercise.ai.SearchMode
 import com.example.aiexercise.ai.VisionMode
+import com.example.aiexercise.ui.AppScreen
 import com.example.aiexercise.ui.AppViewModel
 import com.example.aiexercise.ui.UiState
 import com.example.aiexercise.ui.components.ScreenHeader
@@ -73,8 +74,33 @@ fun SettingsScreen(state: UiState, viewModel: AppViewModel) {
     ) {
         ScreenHeader(
             title = "设置",
-            subtitle = "AI 引擎可替换；数据默认保存在本机 JSON 文件",
+            subtitle = "练习卷 / 批改入口与全部可配置项都在这里",
+            onBack = { viewModel.navigate(AppScreen.Home) },
         )
+
+        // 首页只保留知识点列表 + 扫描，练习卷与批改收进这里
+        ElevatedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader("练习卷与批改")
+                Text(
+                    "生成练习卷 → 在纸上完成 → 扫描答题卡批改 → 订正后再扫。作答写在纸上，参考答案由 AI 生成。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = { viewModel.navigate(AppScreen.Paper) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("练习卷 / 批改") }
+                    if (state.lastReview != null) {
+                        OutlinedButton(
+                            onClick = { viewModel.openLastReview() },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("上次批改") }
+                    }
+                }
+            }
+        }
 
         ElevatedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

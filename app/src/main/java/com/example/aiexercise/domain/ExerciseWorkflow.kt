@@ -8,6 +8,7 @@ import com.example.aiexercise.ai.KpDraft
 import com.example.aiexercise.ai.KpGenerationPayload
 import com.example.aiexercise.ai.PaperPayload
 import com.example.aiexercise.ai.PaperRequest
+import com.example.aiexercise.ai.SolveRequest
 import com.example.aiexercise.data.model.AppData
 import com.example.aiexercise.data.model.Exercise
 import com.example.aiexercise.data.model.ExerciseSource
@@ -107,7 +108,15 @@ class ExerciseToolkit(
         }
         val now = clock()
         val existing = findSameExercise(data, text)
-        val referenceAnswer = input.referenceAnswer.trim().ifBlank { existing?.referenceAnswer.orEmpty() }
+        var referenceAnswer = input.referenceAnswer.trim().ifBlank { existing?.referenceAnswer.orEmpty() }
+        // 学生作答写在纸上、参考答案不由用户填写：缺失时由 AI 自动生成。
+        if (referenceAnswer.isBlank()) {
+            onStage("AI 正在生成参考答案…")
+            when (val solved = ai.solve(SolveRequest(questionText = text, subjectHint = input.subjectHint))) {
+                is Outcome.Success -> referenceAnswer = solved.value.referenceAnswer
+                is Outcome.Failure -> onStage("参考答案生成失败，先按题干维护知识点")
+            }
+        }
         val studentAnswer = input.studentAnswer.trim().ifBlank { existing?.studentAnswer.orEmpty() }
         return if (existing == null) {
             createNewExercise(data, text, input, referenceAnswer, studentAnswer, now, onStage)

@@ -117,6 +117,18 @@ class OpenAiCompatibleAiService(
             },
         )
 
+    override suspend fun solve(request: SolveRequest): Outcome<SolvePayload> =
+        callJson(
+            taskName = "生成参考答案",
+            systemPrompt = SOLVE_SYSTEM_PROMPT,
+            userPrompt = buildSolvePrompt(request),
+            parse = { raw ->
+                AiJson.parseSolution(raw)?.let { payload ->
+                    (AiPayloadValidator.validateSolution(payload) as? Outcome.Success)?.value
+                }
+            },
+        )
+
     override suspend fun guidedStep(request: GuidedRequest): Outcome<GuidedPayload> =
         callJson(
             taskName = "引导式提问",
@@ -486,6 +498,13 @@ class OpenAiCompatibleAiService(
         append("只输出 JSON：{\"answers\":[{\"index\":1,\"questionHint\":\"题号或题干预览\",\"answerText\":\"学生作答原文\"}],\"note\":\"\"}")
     }
 
+    private fun buildSolvePrompt(request: SolveRequest): String = buildString {
+        appendLine("请解答下面这道题，给出可核对的参考答案。学生作答在纸上，不需要参考学生的写法。")
+        appendLine("题目：${request.questionText.take(1000)}")
+        if (request.subjectHint.isNotBlank()) appendLine("学科提示：${request.subjectHint}")
+        appendLine("要求：参考答案要具体（数值/结论/关键式子），步骤清晰但不必长篇讲解。")
+    }
+
     private fun buildGuidedPrompt(request: GuidedRequest): String = buildString {
         appendLine("学生做错了这道题，正在订正。请用引导式提问帮他一步步想出来，**不要直接给答案或完整解法**。")
         appendLine("题目：${request.questionText.take(800)}")
@@ -538,6 +557,11 @@ class OpenAiCompatibleAiService(
         private val ANSWER_READ_SYSTEM_PROMPT =
             "你是一名批改练习卷的老师。根据答题卡的 OCR 文本，提取每个题号下学生的手写作答原文；" +
                 "识别不出就跳过该题，不要编造。只输出 JSON，不要 Markdown 围栏。"
+
+        private val SOLVE_SYSTEM_PROMPT =
+            "你是理科/文科老师，负责为题目生成可核对的参考答案。只输出 JSON：" +
+                "{\"referenceAnswer\":\"最终答案与关键式子\",\"stepsMarkdown\":\"关键步骤（Markdown）\",\"confidence\":0.0~1.0}。" +
+                "不要输出多余文字，不要编造题目里没有的数据。"
 
         private val GUIDED_SYSTEM_PROMPT =
             "你是一名耐心的中学老师，用苏格拉底式提问引导学生自己想出解题步骤；" +

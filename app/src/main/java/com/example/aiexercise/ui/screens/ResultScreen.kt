@@ -160,67 +160,23 @@ fun ResultScreen(state: UiState, viewModel: AppViewModel) {
             }
         }
 
-        // 模块 3：批改
-        ElevatedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionHeader("③ 批改")
-                Text(
-                    "参考答案：${exercise.referenceAnswer.ifBlank { "（未填写，无法批改）" }}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedTextField(
-                    value = state.studentAnswer,
-                    onValueChange = viewModel::updateStudentAnswer,
-                    label = { Text("我的作答（可修改后批改）") },
-                    minLines = 2,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Button(
-                    onClick = viewModel::grade,
-                    enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (state.busy) {
-                        CircularProgressIndicator(Modifier.width(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text("批改中…")
-                    } else {
-                        Text(if (state.lastGrade == null) "开始批改" else "重新批改")
-                    }
-                }
-                state.lastGrade?.let { grade -> GradeCard(grade) }
-            }
-        }
-
         // 联网搜索（必应）：题目正文 + 关联知识点作为关键词
         if (state.searchMode != SearchMode.OFF) {
             SearchSection(state = state, onSearch = viewModel::searchRelated)
         }
 
-        // 后续动作
+        // 后续动作：知识点已入库，回到首页列表；需要出卷/批改都去「设置」
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
                 onClick = viewModel::rescanLastExercise,
                 enabled = !state.busy,
                 modifier = Modifier.weight(1f),
-            ) { Text("重新扫描此题（验证特判）") }
-            OutlinedButton(
-                onClick = { viewModel.navigate(AppScreen.Knowledge) },
+            ) { Text("重新扫描此题") }
+            Button(
+                onClick = { viewModel.navigate(AppScreen.Home) },
                 modifier = Modifier.weight(1f),
-            ) { Text("全部知识点") }
+            ) { Text("返回知识点列表") }
         }
-        Button(
-            onClick = viewModel::generatePaperFromResult,
-            enabled = relatedPoints.isNotEmpty() && !state.busy,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("按遗忘曲线为最紧迫的知识点出练习卷")
-        }
-        Text(
-            "批改后，上述知识点就是这道题相关的「不会知识点」；可随时在「练习卷」页指定方面出卷。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

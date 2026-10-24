@@ -490,6 +490,35 @@ class LocalAiService : AiService {
         return AiPayloadValidator.validateAnswers(payload, request.paperQuestions.size)
     }
 
+    override suspend fun solve(request: SolveRequest): Outcome<SolvePayload> {
+        val question = request.questionText.trim()
+        if (question.length < 4) {
+            return Outcome.Failure(AppError.UnrecognizedInput("题目内容太短，无法生成参考答案"))
+        }
+        val subject = guessSubject(question)
+        val matched = matchRules(question).take(2)
+        val steps = buildString {
+            appendLine("1. 读题：圈出已知条件、所求量与取值范围。")
+            if (matched.isEmpty()) {
+                appendLine("2. 选定方法：把题目拆成「已知 → 公式/定理 → 未知」，必要时画图或列式。")
+            } else {
+                matched.forEachIndexed { index, rule ->
+                    appendLine("${index + 2}. 关键点（${rule.title}）：${rule.detail}")
+                }
+            }
+            appendLine("3. 代入计算，检查单位、范围与特殊情况，最后写出结论。")
+        }
+        val answer = matched.firstOrNull()?.detail?.takeIf { it.isNotBlank() }
+            ?: "按「已知条件 → 对应公式/定理 → 计算 → 检验」给出完整步骤，并写出最终结论。"
+        return AiPayloadValidator.validateSolution(
+            SolvePayload(
+                referenceAnswer = "参考要点：$answer",
+                stepsMarkdown = steps.trim(),
+                confidence = if (matched.isEmpty()) 0.4 else 0.6,
+            ),
+        )
+    }
+
     override suspend fun guidedStep(request: GuidedRequest): Outcome<GuidedPayload> {
         val turn = LocalGuidedTutor.next(request.stage, request.exchanges.lastOrNull()?.text.orEmpty())
         return AiPayloadValidator.validateGuided(

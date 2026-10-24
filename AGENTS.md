@@ -27,7 +27,7 @@ app/src/main/java/com/example/aiexercise/
 ├── platform/   # Android 实现：视觉引擎、图像存储、SharedPreferences、依赖容器
 └── ui/         # ViewModel + Compose 界面（扫描/结果/知识点/练习卷/设置）
 tools/modlens-bridge/   # 把本机 modlens CLI 包成 HTTP /analyze 的 Node 桥
-screenshots/            # 模拟器端到端验收截图（01–29）
+screenshots/            # 模拟器端到端验收截图（01–31）
 ```
 
 ## 构建与测试
@@ -52,11 +52,13 @@ screenshots/            # 模拟器端到端验收截图（01–29）
 5. **密钥不进仓库**：必应 Key / OpenAI Key 只在 App 设置页由用户填写（SharedPreferences）；仓库内只允许占位与 stub。
 6. **改 UI 要同步截图与 README**：更新 `screenshots/` 与 README 的「运行截图」清单。
 
-7. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
+7. **界面极简**：首页（`ui/screens/HomeScreen.kt`）只允许「按复习时间排序的知识点列表 + 扫描按钮」；练习卷/批改/视觉/搜索/知识库配置一律放在设置页（`AppScreen.Settings`），不要再加底部 Tab。参考答案不由用户填写，缺省时走 `AiService.solve` 自动生成。
 
-8. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
-9. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
-10. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
+8. **练习批改闭环**：`domain/PracticeCoach.kt` 负责「扫描答题卡 → 逐题批改 → 仍不会知识点 → 订正轮次」，`domain/ReviewGuards.kt` 负责订正质量与作业一致性守卫（首次必问）。改批改/提问逻辑时保持 `PracticeReview.round` 递增与 `guidedSessions` 的 resolved 并入知识点行为。
+
+9. **教材知识库**：`ai/KnowledgeBaseClient.kt` 对接 `ChinaTextbook-KB` 的 `GET /api/search`（默认 `http://127.0.0.1:8737`，模拟器 `adb reverse tcp:8737 tcp:8737`）。检索失败必须降级（`kbState=failed` + 可读提示），不得阻断知识点分类；服务端数据/索引不入库。
+10. **答题卡 JSON 规范不可破坏**：对外输出的练习卷 JSON 是「答题卡结构」（大题 → 题 → 可选小题；数字=答题行数、数组=选择题选项、字符串含 `___`=填空题）。编解码/校验集中在 `domain/AnswerSheet.kt`，题面与答案 Markdown 放在完整练习卷 JSON 里，两者都要保留。
+11. **多页扫描**：文档扫描/增强在 `platform/DocumentScanEngine.kt`、`platform/ImageEnhancer.kt`；题目分割在 `domain/QuestionSegmenter.kt`（跨页合并、页眉过滤）。分割出的每道题必须独立成 `Exercise` 并带上 `sectionTitle/pageIndexes/crossPage/scanPaperId`。
 
 ## 构建性能（本机）
 
