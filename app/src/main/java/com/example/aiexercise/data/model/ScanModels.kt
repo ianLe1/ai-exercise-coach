@@ -16,6 +16,8 @@ data class ScanPage(
     val imagePath: String,
     val enhancedPath: String? = null,
     val ocrText: String = "",
+    /** 视觉证据（Markdown 排版）：同一页重复分析时复用，避免重复调用视觉模型。 */
+    val markdown: String = "",
     val corrected: Boolean = false,
 )
 

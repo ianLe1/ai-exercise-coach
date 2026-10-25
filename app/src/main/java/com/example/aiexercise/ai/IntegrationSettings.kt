@@ -21,7 +21,7 @@ enum class VisionMode {
 }
 
 data class VisionSettings(
-    val mode: VisionMode = VisionMode.CLOUD,
+    val mode: VisionMode = VisionMode.MLKIT,
     /** modlens 桥地址；模拟器推荐 adb reverse 后填 127.0.0.1，或用 10.0.2.2。 */
     val modlensUrl: String = DEFAULT_MODLENS_URL,
     /** modlens 失败时是否自动回退 ML Kit（保证离线也能用）。 */

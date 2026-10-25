@@ -259,15 +259,36 @@ private fun CropScreen(
     val w = image.width.toFloat()
     val h = image.height.toFloat()
     val inset = 0.04f
-    var corners by remember(image) {
-        mutableStateOf(
-            listOf(
-                Offset(w * inset, h * inset),
-                Offset(w * (1 - inset), h * inset),
-                Offset(w * (1 - inset), h * (1 - inset)),
-                Offset(w * inset, h * (1 - inset)),
-            ),
-        )
+    fun defaultCorners(): List<Offset> = listOf(
+        Offset(w * inset, h * inset),
+        Offset(w * (1 - inset), h * inset),
+        Offset(w * (1 - inset), h * (1 - inset)),
+        Offset(w * inset, h * (1 - inset)),
+    )
+    var corners by remember(image) { mutableStateOf(defaultCorners()) }
+    var autoDetected by remember(image) { mutableStateOf(false) }
+    // 自动框选：拍照后先在缩略图上检测纸张四角，作为初始四边形（用户仍可拖拽微调）
+    LaunchedEffect(image) {
+        val detected = runCatching {
+            val targetWidth = 480
+            val ratio = targetWidth.toFloat() / image.width
+            val small = Bitmap.createScaledBitmap(
+                image,
+                targetWidth,
+                (image.height * ratio).toInt().coerceAtLeast(1),
+                false,
+            )
+            val pixels = IntArray(small.width * small.height)
+            small.getPixels(pixels, 0, small.width, 0, 0, small.width, small.height)
+            val points = com.example.aiexercise.platform.AutoCornerDetector
+                .detect(small.width, small.height, pixels)
+            small.recycle()
+            points?.map { Offset(it.x / ratio, it.y / ratio) }
+        }.getOrNull()
+        if (detected != null && detected.size == 4) {
+            corners = detected
+            autoDetected = true
+        }
     }
     var busy by remember { mutableStateOf(false) }
 
@@ -279,6 +300,22 @@ private fun CropScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
             )
+            if (autoDetected) {
+                Row(
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 44.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "已自动框选，可拖圆点微调",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    TextButton(onClick = {
+                        corners = defaultCorners()
+                        autoDetected = false
+                    }) { Text("重置", color = Color.White) }
+                }
+            }
             Canvas(
                 Modifier
                     .fillMaxSize()

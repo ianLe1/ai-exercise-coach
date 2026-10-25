@@ -405,14 +405,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val pages = current.scanPages
             val pageTexts = mutableListOf<String>()
             val warnings = mutableListOf<String>()
+            val recognizedPages = mutableMapOf<String, com.example.aiexercise.platform.VisionDocument>()
             for ((index, page) in pages.withIndex()) {
+                // 视觉证据缓存：同一页重复分析时不再重新调用视觉模型（多模态在限流下极慢）
+                if (page.ocrText.isNotBlank()) {
+                    pageTexts += page.ocrText
+                    continue
+                }
                 _ui.update { it.copy(segmentStage = "正在识别第 ${index + 1}/${pages.size} 页…") }
                 when (val recognized = recognizeText(File(page.imagePath))) {
-                    is Outcome.Success -> pageTexts += recognized.value.plainText
+                    is Outcome.Success -> {
+                        pageTexts += recognized.value.plainText
+                        recognizedPages[page.id] = recognized.value
+                    }
                     is Outcome.Failure -> {
                         pageTexts += ""
                         warnings += "第 ${index + 1} 页识别失败：${recognized.error.userMessage}"
                     }
+                }
+            }
+            if (recognizedPages.isNotEmpty()) {
+                _ui.update { state ->
+                    state.copy(
+                        scanPages = state.scanPages.map { page ->
+                            val doc = recognizedPages[page.id]
+                            if (doc != null) page.copy(ocrText = doc.plainText, markdown = doc.markdown) else page
+                        },
+                    )
                 }
             }
             pageTexts.forEachIndexed { i, text -> android.util.Log.d("ScanFlow", "page ${i + 1} OCR:\n$text") }

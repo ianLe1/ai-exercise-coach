@@ -22,6 +22,8 @@
 - **平时的扫描也批改**：多页扫描分割出题目后，分割结果页有「批改这次扫描（按纸面作答）」——用 OCR 里抽到的作答逐题批改并回写知识点。
 - **首次启动引导**：用户信息（称呼/年级/目标）为空时，首页弹窗提示先填写，再进入设置补全。
 - **视觉默认内置多模态、优先 modlens 式结构化**：`VisionEngine` 返回 `VisionDocument(plainText, markdown)`；默认走「内置多模态视觉」——直接用设置里的大模型（OpenAI 兼容）Key 按 Markdown + LaTeX 读题，题号/选项/公式结构化；没有 Key 或失败的设备自动回退 ML Kit。ML Kit 也会经 `LayoutFormatter` 整理成 Markdown。`tools/modlens-bridge` 仍保留为可选。
+- **自动框选**：内置扫描拍完先用 `platform/AutoCornerDetector.kt`（灰度 + Otsu + 极值四边形，纯 Kotlin 有单测）自动给四角初值，用户拖圆点微调；检测失败或场景不对时点「重置」回到内缩框。
+- **视觉证据缓存（modlens 式）**：视觉默认用离线 ML Kit 出证据（全文 + Markdown 排版）并缓存到 `ScanPage.ocrText/markdown`，重复分析同一页不再重跑视觉；多模态（云端）只作为可选增强，避免限流时每页等 8–9 分钟。
 - **华为等无 Google 服务设备**：`GmsDocumentScanning` 不可用时，「文档扫描」自动变成「拍照扫描」→ 进入 **App 内置扫描界面**（CameraX 实时取景、连拍多页、每页可拖四角做透视矫正、确认后自动增强并加入扫描页），而不是拍一张图就直接 OCR。矫正/增强思路参考桌面项目 [DocScanner](https://github.com/qicecrem/DocScanner) 的四角透视与预处理流程，但 DocScanner 是 Qt/OpenCV 桌面程序，无法打进 APK，这里用 Android 原生 Canvas/Matrix 实现。
 - **完成练习的闭环**：生成练习卷 → 纸上作答 → 扫描答题卡（可多页）→ 逐题批改 → 列出**仍不会的知识点**；订正后再扫即第 N 轮，订正质量过低会拒绝引导式提问；作业与已维护的列表大相径庭时先问一句“这次是你自己认真做的吗”（首次使用必问，回答“没用心”则整次扫描忽略）。
 - **教材 / 教师用书知识库**：已接入 `ChinaTextbook-KB`（国家中小学智慧教育平台 **2,205 本**教材/教师用书的 SQLite FTS5 检索服务），作为 AI 分类知识点前的“教材依据”，命中会写进知识点证据并展示书名/页码。
@@ -343,6 +345,7 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/50_inapp_crop.png` 内置扫描的四角透视矫正
 - `screenshots/51_inapp_done.png` 多页扫描完成后回到扫描页
 - `screenshots/52_bigger_handles.png` 放大后的四角拖拽手柄（更容易用手指拖动）
+- `screenshots/53_auto_corners.png` 拍照后自动框选四角（可拖圆点 / 一键重置）
 
 ## 构建速度（Android Studio / 命令行）
 
