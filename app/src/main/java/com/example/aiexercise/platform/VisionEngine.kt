@@ -38,6 +38,8 @@ interface VisionEngine {
 data class VisionDocument(
     val plainText: String,
     val markdown: String,
+    /** 逐行文字与归一化位置，供「扫描件上框题」使用。 */
+    val lines: List<com.example.aiexercise.data.model.OcrLine> = emptyList(),
 )
 
 /** 默认实现：ML Kit 中文文字识别（设备端离线模型，图片不出本机）。 */
@@ -54,18 +56,41 @@ class MlKitVisionEngine(private val context: Context) : VisionEngine {
     override suspend fun recognize(uri: Uri): Outcome<VisionDocument> = withContext(Dispatchers.IO) {
         try {
             val image = InputImage.fromFilePath(context, uri)
-            val text = suspendCancellableCoroutine<String> { continuation ->
+            val recognizerResult = suspendCancellableCoroutine<com.google.mlkit.vision.text.Text> { continuation ->
                 recognizer.process(image)
-                    .addOnSuccessListener { result -> continuation.resume(result.text) }
+                    .addOnSuccessListener { result -> continuation.resume(result) }
                     .addOnFailureListener { error -> continuation.resumeWithException(error) }
             }
+            val imageWidth = image.width.toFloat().coerceAtLeast(1f)
+            val imageHeight = image.height.toFloat().coerceAtLeast(1f)
+            val lines = runCatching {
+                recognizerResult.textBlocks
+                    .flatMap { block -> block.lines }
+                    .mapNotNull { line ->
+                        val box = line.boundingBox ?: return@mapNotNull null
+                        com.example.aiexercise.data.model.OcrLine(
+                            text = line.text,
+                            left = (box.left / imageWidth).coerceIn(0f, 1f),
+                            top = (box.top / imageHeight).coerceIn(0f, 1f),
+                            right = (box.right / imageWidth).coerceIn(0f, 1f),
+                            bottom = (box.bottom / imageHeight).coerceIn(0f, 1f),
+                        )
+                    }
+            }.getOrDefault(emptyList())
+            val text = recognizerResult.text
             val trimmed = text.trim()
             if (trimmed.length < MIN_MEANINGFUL_LENGTH) {
                 Outcome.Failure(
                     AppError.UnrecognizedInput("OCR 结果过短（\"$trimmed\"），可能是图片模糊或没有文字"),
                 )
             } else {
-                Outcome.Success(VisionDocument(plainText = trimmed, markdown = com.example.aiexercise.domain.LayoutFormatter.toMarkdown(trimmed)))
+                Outcome.Success(
+                    VisionDocument(
+                        plainText = trimmed,
+                        markdown = com.example.aiexercise.domain.LayoutFormatter.toMarkdown(trimmed),
+                        lines = lines,
+                    ),
+                )
             }
         } catch (exception: Exception) {
             Outcome.Failure(

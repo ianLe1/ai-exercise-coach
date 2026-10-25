@@ -429,7 +429,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     state.copy(
                         scanPages = state.scanPages.map { page ->
                             val doc = recognizedPages[page.id]
-                            if (doc != null) page.copy(ocrText = doc.plainText, markdown = doc.markdown) else page
+                            if (doc != null) {
+                                page.copy(ocrText = doc.plainText, markdown = doc.markdown, lines = doc.lines)
+                            } else {
+                                page
+                            }
                         },
                     )
                 }
@@ -579,6 +583,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val warnings = warningsSeed.toMutableList()
         val toolkit = newToolkit()
         val paperId = _ui.value.scanPaperId.ifBlank { UUID.randomUUID().toString() }
+        // 识别结果（含逐行坐标）在识别阶段已回写进 scanPages，这里必须用最新的一份，
+        // 否则拿到的是「识别前」的副本、框题坐标全空。
+        val livePages = _ui.value.scanPages.takeIf { it.size == pages.size } ?: pages
+        // 「扫描件上框题」：用 OCR 行坐标把每题映射回页面区域
+        val boxes = com.example.aiexercise.domain.QuestionBoxMapper.map(
+            questions = drafts.map {
+                com.example.aiexercise.domain.QuestionBoxMapper.QuestionRef(it.questionText, it.pageFrom)
+            },
+            pages = livePages,
+        )
         var data = baseData
         val results = mutableListOf<ScanResult>()
         for ((index, draft) in drafts.withIndex()) {
@@ -590,7 +604,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 referenceAnswer = draft.referenceAnswer,
                 studentAnswer = draft.studentAnswer,
                 source = ExerciseSource.OCR_GALLERY,
-                imagePath = pages[pageFrom - 1].imagePath,
+                imagePath = livePages[pageFrom - 1].imagePath,
                 subjectHint = subjectHint,
                 sectionTitle = draft.sectionTitle,
                 pageIndexes = (pageFrom..pageTo).toList(),
@@ -599,9 +613,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             )
             when (val scanned = toolkit.scan(data, input)) {
                 is Outcome.Success -> {
-                    results += scanned.value
-                    data = scanned.value.data
-                    scanned.value.warning?.let { warning -> warnings += "第 ${index + 1} 题：${warning.userMessage}" }
+                    var result = scanned.value
+                    val box = boxes.getOrNull(index)
+                    if (box != null) {
+                        val exerciseId = result.exercise.id
+                        val boxed = result.exercise.copy(
+                            boxLeft = box.left,
+                            boxTop = box.top,
+                            boxRight = box.right,
+                            boxBottom = box.bottom,
+                        )
+                        result = result.copy(
+                            exercise = boxed,
+                            data = result.data.copy(
+                                exercises = result.data.exercises.map { if (it.id == exerciseId) boxed else it },
+                            ),
+                        )
+                    }
+                    results += result
+                    data = result.data
+                    result.warning?.let { warning -> warnings += "第 ${index + 1} 题：${warning.userMessage}" }
                 }
 
                 is Outcome.Failure -> warnings += "第 ${index + 1} 题分析失败：${scanned.error.userMessage}"
@@ -648,7 +679,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** 平时的扫描也要批改：用分割时抽取的纸面作答，逐题批改。 */
-    fun gradeScannedSegments() {
+    fun gradeScannedSegments(onlyExerciseId: String? = null) {
         val current = _ui.value
         if (current.segments.isEmpty() || current.busy) return
         viewModelScope.launch {
@@ -698,6 +729,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val graded = current.scanGrades.toMutableMap()
             val failures = mutableListOf<String>()
             segments.forEachIndexed { index, segment ->
+                // 只批改选中的那一题（在扫描件上点框批改）
+                if (onlyExerciseId != null && segment.exercise.id != onlyExerciseId) return@forEachIndexed
                 _ui.update { it.copy(scanStage = "正在批改第 ${index + 1}/${segments.size} 题…") }
                 when (val result = toolkit.grade(data, segment.exercise.id)) {
                     is Outcome.Success -> {
@@ -717,7 +750,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     segments = segments,
                     scanGrades = graded,
                     message = UiMessage(
-                        "批改完成：${graded.size}/${current.segments.size} 题有作答并被批改，对 $passed 题。" +
+                        "批改完成：${graded.size}/" +
+                            (if (onlyExerciseId != null) "1" else current.segments.size.toString()) +
+                            " 题有作答并被批改，对 $passed 题。" +
                             (failures.firstOrNull()?.let { "（${it}）" } ?: "") +
                             (saveError?.let { "；保存失败：${it.userMessage}" } ?: ""),
                         failures.isNotEmpty(),

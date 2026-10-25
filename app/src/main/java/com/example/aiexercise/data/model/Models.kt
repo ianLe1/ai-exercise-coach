@@ -54,6 +54,11 @@ data class Exercise(
     val crossPage: Boolean = false,
     /** 同一份多页扫描产生的题目共享的扫描批次 id；手动输入为空。 */
     val scanPaperId: String = "",
+    /** 题目在扫描件上的归一化框（0..1，相对 pageIndexes.first() 那页）；-1 表示未定位。 */
+    val boxLeft: Float = -1f,
+    val boxTop: Float = -1f,
+    val boxRight: Float = -1f,
+    val boxBottom: Float = -1f,
 )
 
 /**

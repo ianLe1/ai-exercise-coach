@@ -9,6 +9,18 @@ import kotlinx.serialization.Serializable
  * - corrected：是否经文档扫描器/本地增强矫正（旋转、裁边、对比度）；
  * - ocrText：这一页的识别文本，分割题目时按页拼接。
  */
+/**
+ * OCR 一行文字的归一化位置（0..1，相对该页图片），用来在扫描件上框出题目区域。
+ */
+@Serializable
+data class OcrLine(
+    val text: String = "",
+    val left: Float = 0f,
+    val top: Float = 0f,
+    val right: Float = 0f,
+    val bottom: Float = 0f,
+)
+
 @Serializable
 data class ScanPage(
     val id: String,
@@ -18,6 +30,8 @@ data class ScanPage(
     val ocrText: String = "",
     /** 视觉证据（Markdown 排版）：同一页重复分析时复用，避免重复调用视觉模型。 */
     val markdown: String = "",
+    /** 逐行位置（归一化），用于在扫描件上框题。 */
+    val lines: List<OcrLine> = emptyList(),
     val corrected: Boolean = false,
 )
 
