@@ -27,7 +27,7 @@ app/src/main/java/com/example/aiexercise/
 ├── platform/   # Android 实现：视觉引擎、图像存储、SharedPreferences、依赖容器
 └── ui/         # ViewModel + Compose 界面（扫描/结果/知识点/练习卷/设置）
 tools/modlens-bridge/   # 把本机 modlens CLI 包成 HTTP /analyze 的 Node 桥
-screenshots/            # 模拟器端到端验收截图（01–51）
+screenshots/            # 模拟器端到端验收截图（01–52）
 ```
 
 ## 构建与测试

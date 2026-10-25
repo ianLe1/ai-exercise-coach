@@ -292,7 +292,7 @@ private fun CropScreen(
                                 ((change.position.y - offsetY) / scale).coerceIn(0f, h),
                             )
                             var nearest = -1
-                            var best = 120f
+                            var best = 180f
                             corners.forEachIndexed { index, corner ->
                                 val distance = (corner - point).getDistance()
                                 if (distance < best) {
@@ -321,8 +321,8 @@ private fun CropScreen(
                     )
                 }
                 mapped.forEach { point ->
-                    drawCircle(Color.White, radius = 16f, center = point)
-                    drawCircle(Color(0xFF6EA8FF), radius = 9f, center = point)
+                    drawCircle(Color.White, radius = 24f, center = point)
+                    drawCircle(Color(0xFF6EA8FF), radius = 15f, center = point)
                 }
             }
         }

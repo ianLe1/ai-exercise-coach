@@ -342,6 +342,7 @@ tools/modlens-bridge/server.mjs   # Node 桥：把 modlens CLI 包装成 HTTP /a
 - `screenshots/49_inapp_scanner.png` 无 GMS 时的内置扫描取景界面（第 N 页 / 连拍）
 - `screenshots/50_inapp_crop.png` 内置扫描的四角透视矫正
 - `screenshots/51_inapp_done.png` 多页扫描完成后回到扫描页
+- `screenshots/52_bigger_handles.png` 放大后的四角拖拽手柄（更容易用手指拖动）
 
 ## 构建速度（Android Studio / 命令行）
 
