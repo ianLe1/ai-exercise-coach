@@ -18,7 +18,7 @@ object LlmPresets {
         LlmPreset(
             name = "Intern AI",
             baseUrl = "https://discovery-api.intern-ai.org.cn/v1",
-            model = "intern-s2",
+            model = "Sage-A1.5",
         ),
     )
 }
