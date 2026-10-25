@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -253,7 +254,7 @@ private fun GuidedSessionCard(state: UiState, viewModel: AppViewModel, session: 
                     enabled = !state.guidedBusy && state.guidedInput.isNotBlank(),
                 ) {
                     if (state.guidedBusy) {
-                        CircularProgressIndicator(Modifier.width(16.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
                     }
                     Text("发送")

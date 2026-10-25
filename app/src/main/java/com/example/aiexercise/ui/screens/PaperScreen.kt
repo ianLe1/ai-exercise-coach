@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
@@ -124,7 +125,7 @@ fun PaperScreen(state: UiState, viewModel: AppViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     if (state.busy) {
-                        CircularProgressIndicator(Modifier.width(18.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(10.dp))
                         Text("AI 出卷中…")
                     } else {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -57,7 +58,7 @@ fun SegmentsScreen(state: UiState, viewModel: AppViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     if (state.busy) {
-                        CircularProgressIndicator(Modifier.width(16.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
                         Text(state.scanStage.ifBlank { "批改中…" })
                     } else {
